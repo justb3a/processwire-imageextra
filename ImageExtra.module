@@ -37,6 +37,20 @@ class ImageExtra extends WireData implements Module {
   }
 
   /**
+   * @field array Default config values
+   *
+   */
+  protected static $defaults = array(
+    'titleField' => false,
+    'orientationField' => false,
+    'orientationValues' => 'left,right',
+    'linkField' => false,
+    'otherField' => ''
+  );
+
+   protected $data = array();
+
+  /**
    * Initialize the module
    *
    * Implementation of the Module interface
@@ -50,45 +64,55 @@ class ImageExtra extends WireData implements Module {
    *
    */
   public function init() {
-    $this->set('titleField',  true);
-    $this->set('orientationField',  false);
-    $this->set('orientationValues',  'left,right');
-    $this->set('linkField',  false);
-    $this->set('otherField',  '');
-
     $this->addHookAfter('InputfieldImage::getConfigInputfields', $this, 'addExtraFields');
+    $this->addHookAfter('InputfieldImage::renderItem', $this, 'renderExtraFields');
+    $this->addHookBefore('ProcessField::executeSave', $this, 'checkTableColumns');
   }
 
-  public function addExtraFields(HookEvent $event) {
-    $fieldset = $this->modules->get('InputfieldFieldset');
-    $fieldset->label = $this->_('Image Extra Fields');
-    $fieldset->collapsed = Inputfield::collapsedYes;
-    $fieldset->description = $this->_('Here you can add additional image fields.'); // Max image dimensions description
+  public function ___addExtraFields(HookEvent $event) {
+    if ($event->object instanceof InputfieldImage) {
+      $this->mergeData($event->object->name);
 
-    // move description fields
-    foreach ($event->return->children as $field) {
-      if (in_array($field->name, array('descriptionRows', 'noLang'))) {
-        $event->return->children->remove($field);
-        $fieldset->add($field);
-      }
-    }
+      $fieldset = $this->modules->get('InputfieldFieldset');
+      $fieldset->label = $this->_('Image Extra Fields');
+      $fieldset->collapsed = Inputfield::collapsedYes;
+      $fieldset->description = $this->_('Here you can add additional image fields.'); // Max image dimensions description
 
-    // assign fields
-    foreach ($this->getExtraFields() as $name => $s) {
-      $field = $this->modules->get($s['type']);
-      $field->name = $name;
-      $field->value = $data[$name];
-
-      foreach ($s as $key => $val) {
-        if ($key != 'type') {
-          $field->{$key} = $val;
+      // move description fields
+      foreach ($event->return->children as $field) {
+        if (in_array($field->name, array('descriptionRows', 'noLang'))) {
+          $event->return->children->remove($field);
+          $fieldset->add($field);
         }
       }
 
-      $fieldset->add($field);
-    }
+      // assign fields
+      foreach ($this->getExtraFields() as $name => $s) {
+        // no orientation field - no orientation values needed
+        if ($name === 'orientationValues' && (int)$this->data['orientationField']== 0) {
+          continue;
+        }
 
-    $event->return->children->add($fieldset);
+        // add orientation field, reduce column width
+        if ($name === 'orientationField' && (int)$this->data['orientationField'] > 0) {
+          $s['columnWidth'] = 25;
+        }
+
+        $field = $this->modules->get($s['type']);
+        $field->name = $name;
+        $field->value = $this->data[$name];
+
+        foreach ($s as $key => $val) {
+          if ($key != 'type') {
+            $field->{$key} = $val;
+          }
+        }
+
+        $fieldset->add($field);
+      }
+
+      $event->return->children->add($fieldset);
+    }
   }
 
   public function ___getExtraFields() {
@@ -97,40 +121,245 @@ class ImageExtra extends WireData implements Module {
         'type' => 'InputfieldCheckbox',
         'label' => 'Add title field?',
         'description' => 'Enable Title Input Field' . PHP_EOL . '(activate the checkbox to enable field `title`)',
-        'checked' => empty($this->titleField) ? '' : 'checked',
-        'columnWidth' => 33
+        'checked' => empty($this->data['titleField']) ? '' : 'checked',
+        'columnWidth' => 50
       ),
       'orientationField' => array(
         'type' => 'InputfieldCheckbox',
         'label' => 'Add orientation field?',
         'description' => 'Enable Image Orientation Select Field' . PHP_EOL . '(activate the checkbox to enable field `orientation`)',
-        'checked' => empty($this->orientationField) ? '' : 'checked',
-        'columnWidth' => 33
+        'checked' => empty($this->data['orientationField']) ? '' : 'checked',
+        'columnWidth' => 50
       ),
       'orientationValues' => array(
         'type' => 'InputfieldText',
         'label' => 'Enter image orientation values',
         'description' => 'Values for Image Orientation Select Field' . PHP_EOL . '(comma-separated list)',
+        'value' => $this->data['orientationValues'],
         'size' => 45,
-        'placeholder' => 'left,right',
-        'columnWidth' => 34
+        'columnWidth' => 25
       ),
       'linkField' => array(
         'type' => 'InputfieldCheckbox',
         'label' => 'Add internal link field?',
         'description' => 'Enable Choose-Link Field' . PHP_EOL . '(activate the checkbox to enable field `link`)',
-        'checked' => empty($this->linkField) ? '' : 'checked',
-        'columnWidth' => 33
+        'checked' => empty($this->data['linkField']) ? '' : 'checked',
+        'columnWidth' => 50
       ),
       'otherField' => array(
         'type' => 'InputfieldText',
         'label' => 'Add other text input fields?',
         'description' => 'Add other fields as simple inputs' . PHP_EOL . '(comma-separated list)',
+        'value' => $this->data['otherField'],
         'size' => 80,
-        'placeholder' => '',
-        'columnWidth' => 67
+        'columnWidth' => 50
       ),
     );
+  }
+
+  private function mergeData($fieldName) {
+    $fieldConfig = $this->fields->get($fieldName)->data;
+    $this->data = array_merge(self::$defaults, $fieldConfig);
+  }
+
+  private function getAdditionalInputFields() {
+    $additionalFields = ((int)$this->data['titleField'] > 0) ? array('title') : array();
+    if (!empty($this->otherField)) {
+      $others = preg_replace('/\s+/', '', $this->data['otherField']);
+      $others = str_replace(';', ',', $others);
+      array_splice($additionalFields, 1, 0, explode(',', $others));
+    }
+
+    return $additionalFields;
+  }
+
+  public function ___renderExtraFields(HookEvent $event) {
+    $pagefile = $event->arguments[0];
+    $id = $event->arguments[1];
+    $n = $event->arguments[2];
+    $out = $event->return;
+    $outAdditional = '';
+
+    $this->mergeData($event->object->name);
+    $additionalFields = $this->getAdditionalInputFields();
+
+    if (is_array($additionalFields) && !empty($additionalFields)) {
+      foreach ($additionalFields as $field) {
+        $outAdditional .= $this->renderInputItemField($pagefile, $id, $n, $field);
+      }
+    }
+
+    if ((int)$this->data['orientationField'] > 0 && !empty($this->data['orientationValues'])) {
+      $outAdditional .= $this->renderSelectItemField($pagefile, $id, $n, 'orientation');
+    }
+
+    if ((int)$this->data['linkField'] > 0) {
+      $outAdditional .= $this->renderPageItemField($pagefile, $id, $n, 'orientation');
+    }
+
+    $splitOut = preg_split("/[\t]+/", $out);
+    $position = count($splitOut) - 2;
+
+    // add label for description field
+    $replaceLabel = "<label for='description_{$event->object->name}_{$id}' class='detail'>Description</label>";
+    $splitOut[$position - 1] = preg_replace('/<label\b[^>]*>(.*?)<\/label>/', $replaceLabel, $splitOut[$position - 1]);
+    $splitOut[$position - 1] = str_replace('InputfieldFileDescription', 'InputfieldFileDescription2', $splitOut[$position - 1]);
+    $splitOut[$position - 1] = str_replace('input', 'input class="InputfieldMaxWidth"', $splitOut[$position - 1]);
+
+    array_splice($splitOut, $position, 0, $outAdditional);
+
+    $event->return = implode('', $splitOut);
+  }
+
+  public function ___checkTableColumns(HookEvent $event) {
+    $columns = array();
+    foreach (self::$defaults as $add => $default) {
+      if ($this->input->post->{$add}) {
+        if (preg_match('/(.*?)Field$/', $add)) {
+          if ($add !== 'otherField') {
+            $columns[] = preg_replace('/Field$/', '', $add);
+          } else {
+            $others = preg_replace('/\s+/', '', $this->input->post->{$add});
+            $others = str_replace(';', ',', $others);
+            foreach (explode(',', $others) as $field) {
+              $columns[] = $field;
+            }
+          }
+        }
+      }
+    }
+
+    $db = wire('database');
+    $table = $db->escapeTable('field_' . $this->input->post->name);
+    $updated = false;
+
+    if (!empty($columns)) {
+      foreach ($columns as $col) {
+        $sql = "SHOW COLUMNS FROM $table LIKE '$col'";
+
+        try {
+          $result = $this->db->query($sql);
+          $count = array();
+          while($row = $result->fetch_row()) $count[] = $row[0];
+        } catch(Exception $e) {
+          $this->errors($e->getMessage(), Notice::log);
+        }
+
+        if (empty($count)) {
+          $updated = true;
+          $addColumn = "ALTER TABLE `{$table}` ADD `{$col}` text NOT NULL";
+
+          try {
+            $db->exec($addColumn);
+            $this->message("Added column '{$col}' for '{$table}'", Notice::log);
+          } catch(Exception $e) {
+            $this->errors($e->getMessage(), Notice::log);
+          }
+        }
+      }
+
+      if ($updated) {
+        try {
+          $date = date('Y-m-d H:i:s');
+          $query = $db->prepare("UPDATE `$table` SET created=:created, modified=:modified");
+          $query->bindValue(":created", $date);
+          $query->bindValue(":modified", $date);
+          $query->execute();
+          $this->message("Updated created/modified for '{$table}'", Notice::log);
+        } catch(Exception $e) {
+          $this->errors($e->getMessage(), Notice::log);
+        }
+      }
+
+    }
+
+  }
+
+
+  protected function renderInputItemField(Pagefile $pagefile, $id, $n, $current) {
+    $out = '';
+    $tabs = '';
+    static $hasLangTabs = null;
+
+    $userLanguage = $this->wire('user')->language;
+    $languages = $this->noLang ? null : $this->wire('languages');
+
+    if (!$userLanguage || !$languages || $languages->count() < 2) {
+      $numLanguages = 0;
+      $languages = array(null);
+    } else {
+      $numLanguages = $languages->count();
+      if (is_null($hasLangTabs)) $hasLangTabs = $this->wire('modules')->isInstalled('LanguageTabs');
+    }
+
+    foreach ($languages as $language) {
+      $fieldName = $current . '_' . $id;
+      $fieldLabel = $this->_(ucfirst($current));
+      $labelClass = "detail";
+
+      if ($language) {
+        if (!$language->isDefault()) $fieldName = $current . $language->id . '_' . $id;
+        $tabID = "langTab_{$id}__$language";
+        $tabs .= "<li><a href='#$tabID'>" . $language->get('title|name') . "</a></li>";
+        $out .= "<div class='InputfieldFile" . ucfirst($current) . " LanguageSupport' data-language='$language' id='$tabID'>"; // open wrapper
+      } else {
+        $out .= "<div class='InputfieldFile" . ucfirst($current) . "'>"; // open wrapper
+      }
+
+      $out .= "<label for='$fieldName' class='$labelClass'>$fieldLabel</label>";
+
+      // @todo: substitute with current field
+      $value = $this->wire('sanitizer')->entities($pagefile->description($language));
+      $out .= "<input type='text' name='$fieldName' class='InputfieldMaxWidth' id='$fieldName' value='$value' />";
+      $out .= "</div>"; // close wrapper
+    }
+
+    if ($numLanguages && $hasLangTabs) {
+      $ajax = $this->wire('config')->ajax;
+      $out = "<div class='hasLangTabs langTabsContainer'><div class='langTabs'><ul>$tabs</ul>$out</div></div>";
+      if ($ajax) $out .= "<script>setupLanguageTabs($('#wrap_" . $this->attr('id') . "'));</script>";
+    }
+
+    if ($this->useTags) {
+      $tags = $this->wire('sanitizer')->entities($pagefile->tags);
+      $out .= "<span class='InputfieldFileTags'>" .
+        "<label for='tags_$id' class='detail'>{$this->tagsFieldLabel}</label>" .
+        "<input type='text' name='tags_$id' id='tags_$id' value='$tags' />" .
+        "</span>";
+    }
+
+    return $out;
+  }
+
+
+  protected function renderSelectItemField(Pagefile $pagefile, $id, $n, $current) {
+    $fieldName = $current . '_' . $id;
+
+    $options = '';
+    foreach (explode(',', preg_replace('/\s+/', '', $this->data['orientationValues'])) as $option) {
+      // @todo: get and mark selected
+      // $selected = $params['name'] === $val ? 'selected' : '';
+      $selected = '';
+      $options .= "<option value='$option' $selected>$option</option>";
+    }
+
+    $out = "<hr>" .
+      "<div class='InputfieldContent'>" .
+      "<label for='$fieldName'>" . ucfirst($current) . "</label>" .
+      "<select name='select_$fieldName' size='1'>" . $options . "</select>" .
+      "</div>";
+
+    return $out;
+  }
+
+  protected function renderPageItemField(Pagefile $pagefile, $id, $n, $current) {
+    $field = $this->modules->get('InputfieldPageListSelect');
+    $field->setAttribute('name+id', $current);
+    $field->startLabel = $this->_('Choose Page Link');
+    // @todo: add value
+    // $field->attr('value', (int) $this->parent_id);
+
+    return "<hr><label>{$field->startLabel}</label>" . $field->render();
   }
 
 }
