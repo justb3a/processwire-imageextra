@@ -67,6 +67,17 @@ class ImageExtra extends WireData implements Module {
     $this->addHookAfter('InputfieldImage::getConfigInputfields', $this, 'addExtraFields');
     $this->addHookAfter('InputfieldImage::renderItem', $this, 'renderExtraFields');
     $this->addHookBefore('ProcessField::executeSave', $this, 'checkTableColumns');
+    // $this->addHookBefore('ProcessPageEdit::processInput', $this, 'processExtraFields');
+  }
+
+  public function ___processExtraFields(HookEvent $event) {
+    $form = $event->arguments(0);
+    // var_dump($form->get('images')->value->first());
+    var_dump($this->input->post);
+    // var_dump($event);
+    exit;
+    // $input  = $form->get($this->guidfieldName);
+    // $this->input->post->{$this->guidfieldName} = $input->value;
   }
 
   public function ___addExtraFields(HookEvent $event) {
@@ -238,14 +249,15 @@ class ImageExtra extends WireData implements Module {
         $sql = "SHOW COLUMNS FROM $table LIKE '$col'";
 
         try {
-          $result = $this->db->query($sql);
-          $count = array();
-          while($row = $result->fetch_row()) $count[] = $row[0];
+          $query = $db->prepare($sql);
+          $query->execute();
+          $numRows = (int) $query->rowCount();
+          $query->closeCursor();
         } catch(Exception $e) {
           $this->errors($e->getMessage(), Notice::log);
         }
 
-        if (empty($count)) {
+        if (empty($numRows)) {
           $updated = true;
           $addColumn = "ALTER TABLE `{$table}` ADD `{$col}` text NOT NULL";
 
@@ -270,11 +282,8 @@ class ImageExtra extends WireData implements Module {
           $this->errors($e->getMessage(), Notice::log);
         }
       }
-
     }
-
   }
-
 
   protected function renderInputItemField(Pagefile $pagefile, $id, $n, $current) {
     $out = '';
