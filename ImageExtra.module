@@ -1,0 +1,136 @@
+<?php
+
+/**
+*
+* ImageExtra
+*
+* See README.md for usage instructions.
+*
+* @author Tabea David <info@justonestep.de>
+* @version 0.0.1
+* @copyright Copyright (c) 2014
+* @see https://github.com/justonestep/processwire-imageextra
+* @see http://www.processwire.com
+*/
+
+/**
+* Class ImageExtra
+*/
+class ImageExtra extends WireData implements Module {
+
+  /**
+   * Retrieves module meta data
+   * Implementation of the Module interface
+   *
+   * @return array
+   * @see http://processwire.com/apigen/class-Module.html
+   */
+  public static function getModuleInfo() {
+    return array(
+      'title' => 'Image Extra',
+      'summary' => '',
+      'version' => 1,
+      'href' => 'https://github.com/justonestep/processwire-imageextra',
+      'singular' => true,
+      'autoload' => true,
+    );
+  }
+
+  /**
+   * Initialize the module
+   *
+   * Implementation of the Module interface
+   *
+   * ProcessWire calls this when the module is loaded. For 'autoload' modules, this will be called
+   * when ProcessWire's API is ready. As a result, this is a good place to attach hooks.
+   *
+   * @see http://processwire.com/apigen/class-Module.html
+   *
+   * @param Template $template Template object holding the form's fields.
+   *
+   */
+  public function init() {
+    $this->set('titleField',  true);
+    $this->set('orientationField',  false);
+    $this->set('orientationValues',  'left,right');
+    $this->set('linkField',  false);
+    $this->set('otherField',  '');
+
+    $this->addHookAfter('InputfieldImage::getConfigInputfields', $this, 'addExtraFields');
+  }
+
+  public function addExtraFields(HookEvent $event) {
+    $fieldset = $this->modules->get('InputfieldFieldset');
+    $fieldset->label = $this->_('Image Extra Fields');
+    $fieldset->collapsed = Inputfield::collapsedYes;
+    $fieldset->description = $this->_('Here you can add additional image fields.'); // Max image dimensions description
+
+    // move description fields
+    foreach ($event->return->children as $field) {
+      if (in_array($field->name, array('descriptionRows', 'noLang'))) {
+        $event->return->children->remove($field);
+        $fieldset->add($field);
+      }
+    }
+
+    // assign fields
+    foreach ($this->getExtraFields() as $name => $s) {
+      $field = $this->modules->get($s['type']);
+      $field->name = $name;
+      $field->value = $data[$name];
+
+      foreach ($s as $key => $val) {
+        if ($key != 'type') {
+          $field->{$key} = $val;
+        }
+      }
+
+      $fieldset->add($field);
+    }
+
+    $event->return->children->add($fieldset);
+  }
+
+  public function ___getExtraFields() {
+    return array(
+      'titleField' => array(
+        'type' => 'InputfieldCheckbox',
+        'label' => 'Add title field?',
+        'description' => 'Enable Title Input Field' . PHP_EOL . '(activate the checkbox to enable field `title`)',
+        'checked' => empty($this->titleField) ? '' : 'checked',
+        'columnWidth' => 33
+      ),
+      'orientationField' => array(
+        'type' => 'InputfieldCheckbox',
+        'label' => 'Add orientation field?',
+        'description' => 'Enable Image Orientation Select Field' . PHP_EOL . '(activate the checkbox to enable field `orientation`)',
+        'checked' => empty($this->orientationField) ? '' : 'checked',
+        'columnWidth' => 33
+      ),
+      'orientationValues' => array(
+        'type' => 'InputfieldText',
+        'label' => 'Enter image orientation values',
+        'description' => 'Values for Image Orientation Select Field' . PHP_EOL . '(comma-separated list)',
+        'size' => 45,
+        'placeholder' => 'left,right',
+        'columnWidth' => 34
+      ),
+      'linkField' => array(
+        'type' => 'InputfieldCheckbox',
+        'label' => 'Add internal link field?',
+        'description' => 'Enable Choose-Link Field' . PHP_EOL . '(activate the checkbox to enable field `link`)',
+        'checked' => empty($this->linkField) ? '' : 'checked',
+        'columnWidth' => 33
+      ),
+      'otherField' => array(
+        'type' => 'InputfieldText',
+        'label' => 'Add other text input fields?',
+        'description' => 'Add other fields as simple inputs' . PHP_EOL . '(comma-separated list)',
+        'size' => 80,
+        'placeholder' => '',
+        'columnWidth' => 67
+      ),
+    );
+  }
+
+}
