@@ -68,17 +68,75 @@ class ImageExtra extends WireData implements Module {
     $this->addHookAfter('InputfieldImage::renderItem', $this, 'renderExtraFields');
     $this->addHookBefore('ProcessField::executeSave', $this, 'checkTableColumns');
     // $this->addHookBefore('ProcessPageEdit::processInput', $this, 'processExtraFields');
+
+    // $this->addHookAfter('FieldtypeFile::formatValue', $this, 'formatExtraValues');
+    // $this->addHookAfter('InputfieldFile::processInputFile', $this, 'processInputFileExtra');
+
+
+    $this->addHookAfter('FieldtypeFile::sleepValue', $this, 'sleepExtraValue');
+
+    $this->addHookProperty('Pageimage::author', function($event) {
+    }); 
+
+    $this->addHook('Pageimage::author', function($event) {
+      // $event->return = $event->object->author;
+      $event->return = 'what' . $event->arguments(0);
+    }); 
+
   }
 
-  public function ___processExtraFields(HookEvent $event) {
-    $form = $event->arguments(0);
-    // var_dump($form->get('images')->value->first());
-    var_dump($this->input->post);
-    // var_dump($event);
-    exit;
-    // $input  = $form->get($this->guidfieldName);
-    // $this->input->post->{$this->guidfieldName} = $input->value;
+  public function sleepExtraValue(HookEvent $event) {
+    $page = $event->arguments(0);
+    $field = $event->arguments(1);
+    $value = $event->arguments(2);
+
+    $sleepValue = array();
+    $item = reset($event->return);
+    foreach ($value as $pagefile) {
+      $item['author'] = $pagefile->author('blbl');
+      $item['author'] = 'sleepextra';
+    }
+
+    $sleepValue[] = $item;
+    $event->return = $sleepValue;
   }
+
+  // public function ___formatExtraValues(HookEvent $event) {
+  //   $page = $event->arguments(0);
+  //   $field = $event->arguments(1);
+  //   $value = $event->arguments(2);
+  // }
+
+  // public function ___processInputFileExtra(HookEvent $event) {
+  //   $input = $event->arguments(0);
+  //   $pagefile = $event->arguments(1);
+  //   $n = $event->arguments(2);
+  //   $name = $event->object->name;
+  //   $id = $name . '_' . $pagefile->hash;
+  //   $changed = false; 
+  //   $languages = $this->noLang ? null : $this->wire('languages'); 
+  //
+  //   // multi-language authors
+  //   if($languages) foreach($languages as $language) {
+  //     $key = $language->isDefault() ? "author_$id" : "author{$language->id}_$id";
+  //     if(!isset($input[$key])) continue; 
+  //     $value = trim($input[$key]); 
+  //     if($value != $pagefile->author($language)) {
+  //       $pagefile->author($language, $value); 
+  //       $changed = true; 
+  //     }
+  //   }	
+  // }
+
+
+  // public function processExtraFields(HookEvent $event) {
+  //   $form = $event->arguments(0);
+  //   var_dump($form->get('images')->description);
+  //   var_dump($this->input->post);
+  //   exit;
+  //   // $input  = $form->get($this->guidfieldName);
+  //   // $this->input->post->{$this->guidfieldName} = $input->value;
+  // }
 
   public function ___addExtraFields(HookEvent $event) {
     if ($event->object instanceof InputfieldImage) {
@@ -318,7 +376,9 @@ class ImageExtra extends WireData implements Module {
       $out .= "<label for='$fieldName' class='$labelClass'>$fieldLabel</label>";
 
       // @todo: substitute with current field
-      $value = $this->wire('sanitizer')->entities($pagefile->description($language));
+      // $value = $this->wire('sanitizer')->entities($pagefile->{$current($language)});
+      // $value = $this->wire('sanitizer')->entities($pagefile->author);
+      $value = $pagefile->author;
       $out .= "<input type='text' name='$fieldName' class='InputfieldMaxWidth' id='$fieldName' value='$value' />";
       $out .= "</div>"; // close wrapper
     }
@@ -326,7 +386,7 @@ class ImageExtra extends WireData implements Module {
     if ($numLanguages && $hasLangTabs) {
       $ajax = $this->wire('config')->ajax;
       $out = "<div class='hasLangTabs langTabsContainer'><div class='langTabs'><ul>$tabs</ul>$out</div></div>";
-      if ($ajax) $out .= "<script>setupLanguageTabs($('#wrap_" . $this->attr('id') . "'));</script>";
+      if ($ajax) $out .= "<script>setupLanguageTabs($('#wrap_" . $id . "'));</script>";
     }
 
     if ($this->useTags) {
