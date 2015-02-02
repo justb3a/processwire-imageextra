@@ -41,7 +41,7 @@ class ImageExtra extends WireData implements Module {
    *
    */
   protected static $defaults = array(
-    'titleField' => false,
+    'captionField' => false,
     'orientationField' => false,
     'orientationValues' => 'left,right',
     'linkField' => false,
@@ -372,11 +372,11 @@ class ImageExtra extends WireData implements Module {
 
   public function getExtraFields($data) {
     return array(
-      'titleField' => array(
+      'captionField' => array(
         'type' => 'InputfieldCheckbox',
-        'label' => 'Add title field?',
-        'description' => 'Enable Title Input Field' . PHP_EOL . '(activate the checkbox to enable field `title`)',
-        'checked' => empty($data['titleField']) ? '' : 'checked',
+        'label' => 'Add caption field?',
+        'description' => 'Enable Caption Input Field' . PHP_EOL . '(activate the checkbox to enable field `caption`)',
+        'checked' => empty($data['captionField']) ? '' : 'checked',
         'columnWidth' => 50
       ),
       'orientationField' => array(
@@ -418,7 +418,7 @@ class ImageExtra extends WireData implements Module {
   }
 
   private function getAdditionalInputFields($data) {
-    $additionalFields = ($data['titleField'] > 0) ? array('title') : array();
+    $additionalFields = ($data['captionField'] > 0) ? array('caption') : array();
     if (!empty($data['otherField'])) {
       $others = preg_replace('/\s+/', '', $data['otherField']);
       $others = str_replace(';', ',', $others);
