@@ -16,7 +16,7 @@
 /**
 * Class ImageExtra
 */
-class ImageExtra extends WireData implements Module {
+class ImageExtra extends WireData implements Module, ConfigurableModule {
 
   /**
    * Retrieves module meta data
@@ -48,6 +48,48 @@ class ImageExtra extends WireData implements Module {
     'otherField' => ''
   );
 
+  /**
+   * @field array Default config values
+   */
+  protected static $basics = array(
+    'selectedInputfields' => 'InputfieldImage'
+  );
+
+
+  /**
+   * Retrieves the list of config input fields
+   *
+   * Implementation of the ConfigurableModule interface
+   *
+   * @param array $data The config data
+   * @return InputfieldWrapper
+   * @see http://processwire.com/apigen/class-ConfigurableModule.html
+   */
+  public static function getModuleConfigInputfields(array $data) {
+    $fields = new InputfieldWrapper();
+    $modules = wire('modules');
+
+    // default config values
+    $data = array_merge(self::$basics, $data);
+
+    $field = $modules->get('InputfieldAsmSelect');
+    $field->attr('value', $data['selectedInputfields']);
+    $field->description = 'Select the inputfields where the extra fields should be attached.';
+    $field->addOption('', '');
+    $field->label = 'Select Image Inputfields';
+    $field->attr('name', 'selectedInputfields'); 
+    $field->required = true; 
+
+    foreach (wire('modules') as $module) {
+      if (preg_match('/^Inputfield/', $module)) {
+        $field->addOption($module->name, $module->name); 
+      }
+    }
+
+    $fields->append($field);
+
+    return $fields;
+  }
 
   /**
    * Initialize the module
@@ -325,6 +367,7 @@ class ImageExtra extends WireData implements Module {
 
 
   public function ___addExtraFields(HookEvent $event) {
+    var_dump($this->selectedInputfields);
     if ($event->object instanceof InputfieldImage) {
       $data = $this->mergeData($event->object->name);
 
