@@ -77,12 +77,12 @@ class ImageExtra extends WireData implements Module, ConfigurableModule {
     $field->description = 'Select the inputfields where the extra fields should be attached.';
     $field->addOption('', '');
     $field->label = 'Select Image Inputfields';
-    $field->attr('name', 'selectedInputfields'); 
-    $field->required = true; 
+    $field->attr('name', 'selectedInputfields');
+    $field->required = true;
 
     foreach (wire('modules') as $module) {
       if (preg_match('/^Inputfield/', $module)) {
-        $field->addOption($module->name, $module->name); 
+        $field->addOption($module->name, $module->name);
       }
     }
 
@@ -121,33 +121,42 @@ class ImageExtra extends WireData implements Module, ConfigurableModule {
    *
    */
   public function ready() {
-    $this->addHookAfter('InputfieldImage::getConfigInputfields', $this, 'addExtraFields');
-    $this->addHookAfter('InputfieldImage::renderItem', $this, 'renderExtraFields');
-    $this->addHookBefore('ProcessField::executeSave', $this, 'checkTableColumns');
+    if (wire('page')->template->name === 'admin' && !empty($this->input->get->id) || wire('page')->template->name != 'admin') {
+      $this->addHookAfter('InputfieldImage::getConfigInputfields', $this, 'addExtraFields');
+      $this->addHookAfter('InputfieldImage::renderItem', $this, 'renderExtraFields');
+      $this->addHookBefore('ProcessField::executeSave', $this, 'checkTableColumns');
 
-    $this->addHookAfter('InputfieldFile::processInputFile', $this, 'processInputFileExtra');
-    $this->addHookAfter('Fieldtype::loadPageField', $this, 'loadPageFieldExtra');
+      $this->addHookAfter('InputfieldFile::processInputFile', $this, 'processInputFileExtra');
+      $this->addHookAfter('Fieldtype::loadPageField', $this, 'loadPageFieldExtra');
 
-    $this->addHookAfter('FieldtypeFile::sleepValue', $this, 'sleepExtraValue');
-    $this->addHookAfter('FieldtypeFile::wakeupValue', $this, 'wakeupExtraValue');
+      $this->addHookAfter('FieldtypeFile::sleepValue', $this, 'sleepExtraValue');
+      $this->addHookAfter('FieldtypeFile::wakeupValue', $this, 'wakeupExtraValue');
 
-    $this->addCustomMethods();
+      $this->addCustomMethods();
+    }
   }
 
   public function addCustomMethods() {
+    $fieldName = '';
     if (wire('page')->template->name != 'admin') {
       $fieldName = wire('page')->template->name;
-    } else {
+    } elseif (wire('pages')->get($this->input->get->id)->template) {
       $fieldName = wire('pages')->get($this->input->get->id)->template->name;
     }
-    $fieldConfig = $this->fields->get($fieldName)->data;
-    $this->additionalFields = $this->getAdditionalInputFields($fieldConfig);
 
-    foreach ($this->additionalFields as $current) {
-      $this->addHookProperty('Pageimage::' . $current, function($event) { });
-      $this->addHook('Pageimage::' . $current, function($event) {
-        $event->return = $this->addCustomMethod($event, $event->method);
-      });
+    if (!empty($fieldName)) {
+      $fieldConfig = $this->fields->get($fieldName);
+      if (!empty($fieldConfig)) {
+        $fieldConfig = $fieldConfig->data;
+        $this->additionalFields = $this->getAdditionalInputFields($fieldConfig);
+
+        foreach ($this->additionalFields as $current) {
+          $this->addHookProperty('Pageimage::' . $current, function($event) { });
+          $this->addHook('Pageimage::' . $current, function($event) {
+            $event->return = $this->addCustomMethod($event, $event->method);
+          });
+        }
+      }
     }
   }
 
