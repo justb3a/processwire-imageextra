@@ -126,17 +126,15 @@ class ImageExtra extends WireData implements Module, ConfigurableModule {
     $this->addHookBefore('ProcessField::executeSave', $this, 'checkTableColumns');
 
     if (wire('page')->template->name === 'admin' && !empty($this->input->get->id) || wire('page')->template->name != 'admin') {
-      // if (!empty($this->additionalFields)) {
+      $this->addCustomMethods();
 
+      if (wire('page')->name === 'field' || !empty($this->additionalFields)) {
         $this->addHookAfter('InputfieldFile::processInputFile', $this, 'processInputFileExtra');
         $this->addHookAfter('Fieldtype::loadPageField', $this, 'loadPageFieldExtra');
-
         $this->addHookAfter('FieldtypeFile::sleepValue', $this, 'sleepExtraValue');
         $this->addHookAfter('FieldtypeFile::wakeupValue', $this, 'wakeupExtraValue');
       }
-
-      $this->addCustomMethods();
-    // }
+    }
   }
 
   public function addCustomMethods() {
