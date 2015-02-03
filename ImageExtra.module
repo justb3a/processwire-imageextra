@@ -367,8 +367,12 @@ class ImageExtra extends WireData implements Module, ConfigurableModule {
 
 
   public function ___addExtraFields(HookEvent $event) {
-    var_dump($this->selectedInputfields);
-    if ($event->object instanceof InputfieldImage) {
+    $if = array();
+    foreach ($this->selectedInputfields as $inputfield) {
+      $if[] = $event->object instanceof $inputfield;
+    }
+
+    if (implode(' || ', $if)) {
       $data = $this->mergeData($event->object->name);
 
       $fieldset = $this->modules->get('InputfieldFieldset');
