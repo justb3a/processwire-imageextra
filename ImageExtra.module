@@ -349,8 +349,8 @@ class ImageExtra extends WireData implements Module, ConfigurableModule {
       foreach ($value as $v) {
         foreach ($this->additionalFields as $add) {
           $e[$add] = $v->{$add}(true);
-          $sleepValue[] = $e;
         }
+        $sleepValue[] = $e;
       }
     }
 
