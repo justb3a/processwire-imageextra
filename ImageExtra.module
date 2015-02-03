@@ -121,40 +121,60 @@ class ImageExtra extends WireData implements Module, ConfigurableModule {
    *
    */
   public function ready() {
+    $this->addHookAfter('InputfieldImage::getConfigInputfields', $this, 'addExtraFields');
+    $this->addHookAfter('InputfieldImage::renderItem', $this, 'renderExtraFields');
+    $this->addHookBefore('ProcessField::executeSave', $this, 'checkTableColumns');
+
     if (wire('page')->template->name === 'admin' && !empty($this->input->get->id) || wire('page')->template->name != 'admin') {
-      $this->addHookAfter('InputfieldImage::getConfigInputfields', $this, 'addExtraFields');
-      $this->addHookAfter('InputfieldImage::renderItem', $this, 'renderExtraFields');
-      $this->addHookBefore('ProcessField::executeSave', $this, 'checkTableColumns');
+      // if (!empty($this->additionalFields)) {
 
-      $this->addHookAfter('InputfieldFile::processInputFile', $this, 'processInputFileExtra');
-      $this->addHookAfter('Fieldtype::loadPageField', $this, 'loadPageFieldExtra');
+        $this->addHookAfter('InputfieldFile::processInputFile', $this, 'processInputFileExtra');
+        $this->addHookAfter('Fieldtype::loadPageField', $this, 'loadPageFieldExtra');
 
-      $this->addHookAfter('FieldtypeFile::sleepValue', $this, 'sleepExtraValue');
-      $this->addHookAfter('FieldtypeFile::wakeupValue', $this, 'wakeupExtraValue');
+        $this->addHookAfter('FieldtypeFile::sleepValue', $this, 'sleepExtraValue');
+        $this->addHookAfter('FieldtypeFile::wakeupValue', $this, 'wakeupExtraValue');
+      }
 
       $this->addCustomMethods();
-    }
+    // }
   }
 
   public function addCustomMethods() {
-    $fieldName = '';
+    $fieldNames = array();
     if (wire('page')->template->name != 'admin') {
-      $fieldName = wire('page')->template->name;
-    } elseif (wire('pages')->get($this->input->get->id)->template) {
-      $fieldName = wire('pages')->get($this->input->get->id)->template->name;
+      $fieldNameFields = wire('page')->template->fields->find('inputfieldClass=' . implode('|', $this->selectedInputfields));
+      if (count($fieldNameFields)) {
+
+        foreach ($fieldNameFields as $f) {
+          $fieldNames[] = $f->name;
+        }
+      }
+    } else {
+      if ($this->page->name === 'fields') {
+      } elseif (wire('pages')->get($this->input->get->id)->template) {
+        $fieldNameFields = wire('pages')->get($this->input->get->id)->template->fields->find('inputfieldClass=' . implode('|', $this->selectedInputfields));
+        if (count($fieldNameFields)) {
+
+          foreach ($fieldNameFields as $f) {
+            $fieldNames[] = $f->name;
+          }
+        }
+      }
     }
 
-    if (!empty($fieldName)) {
-      $fieldConfig = $this->fields->get($fieldName);
-      if (!empty($fieldConfig)) {
-        $fieldConfig = $fieldConfig->data;
-        $this->additionalFields = $this->getAdditionalInputFields($fieldConfig);
+    if (!empty($fieldNames)) {
+      foreach ($fieldNames as $fieldName) {
+        $fieldConfig = $this->fields->get($fieldName);
+        if (!empty($fieldConfig)) {
+          $fieldConfig = $fieldConfig->data;
+          $this->additionalFields = $this->getAdditionalInputFields($fieldConfig);
 
-        foreach ($this->additionalFields as $current) {
-          $this->addHookProperty('Pageimage::' . $current, function($event) { });
-          $this->addHook('Pageimage::' . $current, function($event) {
-            $event->return = $this->addCustomMethod($event, $event->method);
-          });
+          foreach ($this->additionalFields as $current) {
+            $this->addHookProperty('Pageimage::' . $current, function($event) { });
+            $this->addHook('Pageimage::' . $current, function($event) {
+              $event->return = $this->addCustomMethod($event, $event->method);
+            });
+          }
         }
       }
     }
@@ -268,7 +288,12 @@ class ImageExtra extends WireData implements Module, ConfigurableModule {
     $page = $event->arguments(0);
     $field = $event->arguments(1);
 
-    if ($field->name === 'images') {
+    $if = array();
+    foreach ($this->selectedInputfields as $inputfield) {
+      $if[] = $field->inputfieldClass === $inputfield;
+    }
+
+    if (implode(' || ', $if)) {
       $database = $this->wire('database');
       $isMulti = $field->type instanceof FieldtypeMulti;
       $page_id = (int) $page->id;
@@ -276,7 +301,7 @@ class ImageExtra extends WireData implements Module, ConfigurableModule {
       $query = new DatabaseQuerySelect();
 
       foreach ($this->additionalFields as $add) {
-        $query->select("field_images.$add AS `images__$add`");
+        $query->select("field_{$field->name}.$add AS `" . $field->name . "__$add`");
       }
 
       $query->where("$table.pages_id='$page_id'");
@@ -303,14 +328,16 @@ class ImageExtra extends WireData implements Module, ConfigurableModule {
       }
       $stmt->closeCursor();
 
-      if($isMulti && count($values)) $value = $values;
+      // if($isMulti && count($values)) $value = $values;
 
       $return = array();
-      foreach ($event->return as $r) {
-        $return = $r + $value;
-      }
+      if (!empty($event->return)) {
+        foreach ($event->return as $r) {
+          $return = $r + $value;
+        }
 
-      $event->return = $return;
+        $event->return = $return;
+      }
     }
   }
 
@@ -320,15 +347,15 @@ class ImageExtra extends WireData implements Module, ConfigurableModule {
     $value = $event->arguments(2);
 
     $sleepValue = array();
-    $item = reset($event->return);
-
-    foreach ($value as $pagefile) {
-      foreach ($this->additionalFields as $add) {
-        $item[$add] = $pagefile->{$add}(true);
+    foreach ($event->return as $e) {
+      foreach ($value as $v) {
+        foreach ($this->additionalFields as $add) {
+          $e[$add] = $v->{$add}(true);
+          $sleepValue[] = $e;
+        }
       }
     }
 
-    $sleepValue[] = $item;
     $event->return = $sleepValue;
   }
 
@@ -375,7 +402,7 @@ class ImageExtra extends WireData implements Module, ConfigurableModule {
   }
 
 
-  public function ___addExtraFields(HookEvent $event) {
+  public function addExtraFields(HookEvent $event) {
     $if = array();
     foreach ($this->selectedInputfields as $inputfield) {
       $if[] = $event->object instanceof $inputfield;
@@ -474,11 +501,17 @@ class ImageExtra extends WireData implements Module, ConfigurableModule {
   }
 
   private function getAdditionalInputFields($data) {
-    $additionalFields = ($data['captionField'] > 0) ? array('caption') : array();
-    if (!empty($data['otherField'])) {
-      $others = preg_replace('/\s+/', '', $data['otherField']);
-      $others = str_replace(';', ',', $others);
-      array_splice($additionalFields, 1, 0, explode(',', $others));
+    $additionalFields = array();
+    if (isset($data['captionField'])) {
+      $additionalFields = ($data['captionField'] > 0) ? array('caption') : array();
+    }
+
+    if (isset($data['otherField'])) {
+      if (!empty($data['otherField'])) {
+        $others = preg_replace('/\s+/', '', $data['otherField']);
+        $others = str_replace(';', ',', $others);
+        array_splice($additionalFields, 1, 0, explode(',', $others));
+      }
     }
 
     return $additionalFields;
@@ -522,7 +555,7 @@ class ImageExtra extends WireData implements Module, ConfigurableModule {
     $event->return = implode('', $splitOut);
   }
 
-  public function ___checkTableColumns(HookEvent $event) {
+  public function checkTableColumns(HookEvent $event) {
     $columns = array();
     foreach (self::$defaults as $add => $default) {
       if ($this->input->post->{$add}) {
