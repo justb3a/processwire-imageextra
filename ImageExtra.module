@@ -129,6 +129,7 @@ class ImageExtra extends WireData implements Module, ConfigurableModule {
       $this->addCustomMethods();
 
       if (wire('page')->name === 'field' || !empty($this->additionalFields)) {
+        $this->addHookAfter('InputfieldFile::processInput', $this, 'processInputExtra');
         $this->addHookAfter('InputfieldFile::processInputFile', $this, 'processInputFileExtra');
         $this->addHookAfter('Fieldtype::loadPageField', $this, 'loadPageFieldExtra');
         $this->addHookAfter('FieldtypeFile::sleepValue', $this, 'sleepExtraValue');
@@ -243,7 +244,9 @@ class ImageExtra extends WireData implements Module, ConfigurableModule {
 	 */
 	protected function setExtra($name, $value, Page $language = null) {
     if (!is_null($language) && $language->id) {
-      if(!$language->isDefault()) $name .= $language->id;
+      if (!$language->isDefault()) $name .= $language->id;
+      $value = $this->wire('sanitizer')->textarea($value);
+      // @todo: pah. this does not work
       parent::set($name, $this->wire('sanitizer')->textarea($value));
       return $this;
     }
@@ -304,7 +307,7 @@ class ImageExtra extends WireData implements Module, ConfigurableModule {
 
       $query->where("$table.pages_id='$page_id'");
       $query->from($table);
-      if($isMulti) $query->orderby('sort');
+      if ($isMulti) $query->orderby('sort');
 
       $value = null;
       $stmt = $query->execute();
@@ -315,23 +318,25 @@ class ImageExtra extends WireData implements Module, ConfigurableModule {
       if (!$result) return $value;
 
       while($row = $stmt->fetch(PDO::FETCH_ASSOC)) {
+        $value = array();
         foreach ($this->additionalFields as $add) {
           $key = $fieldName . '__' . $add;
           $value[$add] = $row[$key];
-
-          // if there is just one 'data' field here, then don't bother with the array, just make data the value
-          if(count($value) == 1 && isset($value['data'])) $value = $value['data'];
-          if(!$isMulti) break;
         }
+
+        // if there is just one 'data' field here, then don't bother with the array, just make data the value
+        if (count($value) == 1 && isset($value['data'])) $value = $value['data'];
+        if (!$isMulti) break;
+        $values[] = $value;
       }
       $stmt->closeCursor();
 
-      // if($isMulti && count($values)) $value = $values;
+      if ($isMulti && count($values)) $value = $values;
 
       $return = array();
       if (!empty($event->return)) {
-        foreach ($event->return as $r) {
-          $return = $r + $value;
+        foreach ($event->return as $key => $r) {
+          $return[] = $r + $value[$key];
         }
 
         $event->return = $return;
@@ -346,13 +351,18 @@ class ImageExtra extends WireData implements Module, ConfigurableModule {
 
     $sleepValue = array();
     foreach ($event->return as $e) {
-      foreach ($value as $v) {
+      foreach ($value as $pagefile) {
         foreach ($this->additionalFields as $add) {
-          $e[$add] = $v->{$add}(true);
+          // @todo: overwriting starts here 
+          $e[$add] = $pagefile->$add(true);
         }
-        $sleepValue[] = $e;
       }
+
+      $sleepValue[] = $e;
     }
+
+    // @todo: wrong output, always the last input
+    // var_dump($sleepValue);
 
     $event->return = $sleepValue;
   }
@@ -362,7 +372,7 @@ class ImageExtra extends WireData implements Module, ConfigurableModule {
     $field = $event->arguments(1);
     $value = $event->arguments(2);
 
-    if(!is_array($value) || array_key_exists('data', $value)) $value = array($value);
+    if (!is_array($value) || array_key_exists('data', $value)) $value = array($value);
     foreach ($event->return as $pagefile) {
       foreach($value as $v) {
         foreach ($this->additionalFields as $add) {
@@ -370,6 +380,13 @@ class ImageExtra extends WireData implements Module, ConfigurableModule {
         }
       }
     }
+  }
+
+  public function processInputExtra(HookEvent $event) {
+    $input = $event->arguments(0);
+    // var_dump($input);
+
+    // var_dump($input);
   }
 
   public function processInputFileExtra(HookEvent $event) {
@@ -381,6 +398,15 @@ class ImageExtra extends WireData implements Module, ConfigurableModule {
     $changed = false;
     $languages = $this->noLang ? null : $this->wire('languages');
 
+    foreach ($this->additionalFields as $key) {
+      if(isset($input[$key . '_' . $id])) { 
+        $value = trim($input[$key . '_' . $id]); 
+        if($value != $pagefile->$key) {
+          $pagefile->$key = $value; 
+          $changed = true; 
+        }
+      }
+    }
 
     // multi-language additional fields
     if ($languages) foreach($languages as $language) {
@@ -388,9 +414,8 @@ class ImageExtra extends WireData implements Module, ConfigurableModule {
         $key = $language->isDefault() ? $add . '_' . $id : "$add{$language->id}_$id";
         if(!isset($input[$key])) continue;
         $value = trim($input[$key]);
-        if($value != $pagefile->{$add}($language)) {
+        if ($value != $pagefile->{$add}($language)) {
           $pagefile->{$add}($language, $value);
-          $pagefile->{$add} = $pagefile->{$add}($language, $value);
           $changed = true;
         }
       }
