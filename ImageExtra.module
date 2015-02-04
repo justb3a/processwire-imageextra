@@ -91,6 +91,8 @@ class ImageExtra extends WireData implements Module, ConfigurableModule {
     return $fields;
   }
 
+  protected $additionalFields = array();
+
   /**
    * Initialize the module
    *
@@ -165,16 +167,16 @@ class ImageExtra extends WireData implements Module, ConfigurableModule {
       foreach ($fieldNames as $fieldName) {
         $fieldConfig = $this->fields->get($fieldName);
         if (!empty($fieldConfig)) {
-          $fieldConfig = $fieldConfig->data;
-          $this->additionalFields = $this->getAdditionalInputFields($fieldConfig);
-
-          foreach ($this->additionalFields as $current) {
-            $this->addHookProperty('Pageimage::' . $current, function($event) { });
-            $this->addHook('Pageimage::' . $current, function($event) {
-              $event->return = $this->addCustomMethod($event, $event->method);
-            });
-          }
+          $this->getAdditionalInputFields($fieldConfig->data);
         }
+      }
+
+
+      foreach ($this->additionalFields as $current) {
+        $this->addHookProperty('Pageimage::' . $current, function($event) { });
+        $this->addHook('Pageimage::' . $current, function($event) {
+          $event->return = $this->addCustomMethod($event, $event->method);
+        });
       }
     }
   }
@@ -289,6 +291,8 @@ class ImageExtra extends WireData implements Module, ConfigurableModule {
     $page = $event->arguments(0);
     $field = $event->arguments(1);
 
+    if (!$page->id || !$field->id) return null;
+
     $if = array();
     foreach ($this->selectedInputfields as $inputfield) {
       $if[] = $field->inputfieldClass === $inputfield;
@@ -301,9 +305,21 @@ class ImageExtra extends WireData implements Module, ConfigurableModule {
       $table = $database->escapeTable($field->table);
       $query = new DatabaseQuerySelect();
 
-      foreach ($this->additionalFields as $add) {
-        $query->select("field_{$field->name}.$add AS `" . $field->name . "__$add`");
+      $chkcol = $this->db->query("SHOW COLUMNS FROM `$table`");
+      $columns = array();
+      while ($row = mysqli_fetch_assoc($chkcol)) {
+        $columns[] = $row['Field'];
       }
+
+      $count = 0;
+      foreach ($this->additionalFields as $add) {
+        if (in_array($add, $columns)) {
+          $query->select("field_{$field->name}.$add AS `" . $field->name . "__$add`");
+          $count++;
+        }
+      }
+
+      if ($count === 0) return null;
 
       $query->where("$table.pages_id='$page_id'");
       $query->from($table);
@@ -316,6 +332,8 @@ class ImageExtra extends WireData implements Module, ConfigurableModule {
       $fieldName = $database->escapeCol($field->name);
 
       if (!$result) return $value;
+
+      $values = array();
 
       while($row = $stmt->fetch(PDO::FETCH_ASSOC)) {
         $value = array();
@@ -349,20 +367,17 @@ class ImageExtra extends WireData implements Module, ConfigurableModule {
     $field = $event->arguments(1);
     $value = $event->arguments(2);
 
-    $sleepValue = array();
-    foreach ($event->return as $e) {
-      foreach ($value as $pagefile) {
-        foreach ($this->additionalFields as $add) {
-          // @todo: overwriting starts here 
-          $e[$add] = $pagefile->$add(true);
-        }
+    $tmp = array();
+    foreach ($value as $pagefile) {
+      foreach ($this->additionalFields as $add) {
+        $tmp[][$add] = $pagefile->$add(true);
       }
-
-      $sleepValue[] = $e;
     }
 
-    // @todo: wrong output, always the last input
-    // var_dump($sleepValue);
+    $sleepValue = array();
+    foreach ($event->return as $key => $e) {
+      $sleepValue[] = $e + $tmp[$key];
+    }
 
     $event->return = $sleepValue;
   }
@@ -385,8 +400,6 @@ class ImageExtra extends WireData implements Module, ConfigurableModule {
   public function processInputExtra(HookEvent $event) {
     $input = $event->arguments(0);
     // var_dump($input);
-
-    // var_dump($input);
   }
 
   public function processInputFileExtra(HookEvent $event) {
@@ -399,11 +412,11 @@ class ImageExtra extends WireData implements Module, ConfigurableModule {
     $languages = $this->noLang ? null : $this->wire('languages');
 
     foreach ($this->additionalFields as $key) {
-      if(isset($input[$key . '_' . $id])) { 
-        $value = trim($input[$key . '_' . $id]); 
+      if(isset($input[$key . '_' . $id])) {
+        $value = trim($input[$key . '_' . $id]);
         if($value != $pagefile->$key) {
-          $pagefile->$key = $value; 
-          $changed = true; 
+          $pagefile->$key = $value;
+          $changed = true;
         }
       }
     }
@@ -524,20 +537,22 @@ class ImageExtra extends WireData implements Module, ConfigurableModule {
   }
 
   private function getAdditionalInputFields($data) {
-    $additionalFields = array();
     if (isset($data['captionField'])) {
-      $additionalFields = ($data['captionField'] > 0) ? array('caption') : array();
+      if ($data['captionField'] > 0) {
+        $this->additionalFields['caption'] = 'caption';
+      }
     }
 
     if (isset($data['otherField'])) {
       if (!empty($data['otherField'])) {
         $others = preg_replace('/\s+/', '', $data['otherField']);
         $others = str_replace(';', ',', $others);
-        array_splice($additionalFields, 1, 0, explode(',', $others));
+
+        foreach (explode(',', $others) as $other) {
+          $this->additionalFields[$other] = $other;
+        }
       }
     }
-
-    return $additionalFields;
   }
 
   public function renderExtraFields(HookEvent $event) {
@@ -548,10 +563,10 @@ class ImageExtra extends WireData implements Module, ConfigurableModule {
     $outAdditional = '';
 
     $data = $this->mergeData($event->object->name);
-    $additionalFields = $this->getAdditionalInputFields($data);
+    // $additionalFields = $this->getAdditionalInputFields($data);
 
-    if (is_array($additionalFields) && !empty($additionalFields)) {
-      foreach ($additionalFields as $field) {
+    if (!empty($this->additionalFields)) {
+      foreach ($this->additionalFields as $field) {
         $outAdditional .= $this->renderInputItemField($pagefile, $id, $n, $field);
       }
     }
