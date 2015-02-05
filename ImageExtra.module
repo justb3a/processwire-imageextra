@@ -6,9 +6,9 @@
 *
 * See README.md for usage instructions.
 *
-* @author Tabea David <info@justonestep.de>
+* @author Tabea David <td@kf-interactive.com>
 * @version 0.0.1
-* @copyright Copyright (c) 2014
+* @copyright Copyright (c) 2015
 * @see https://github.com/justonestep/processwire-imageextra
 * @see http://www.processwire.com
 */
@@ -37,7 +37,7 @@ class ImageExtra extends WireData implements Module, ConfigurableModule {
   }
 
   /**
-   * @field array Default config values
+   * @field array default config values for field settings
    *
    */
   protected static $defaults = array(
@@ -49,12 +49,15 @@ class ImageExtra extends WireData implements Module, ConfigurableModule {
   );
 
   /**
-   * @field array Default config values
+   * @field array basic config values for module settings
    */
   protected static $basics = array(
     'selectedInputfields' => 'InputfieldImage'
   );
 
+  /**
+   * @field array additional fields
+   */
   protected $additionalFields = array(
     'other' => array(),
     'orientation' => array(),
@@ -79,9 +82,9 @@ class ImageExtra extends WireData implements Module, ConfigurableModule {
 
     $field = $modules->get('InputfieldAsmSelect');
     $field->attr('value', $data['selectedInputfields']);
-    $field->description = 'Select the inputfields where the extra fields should be attached.';
+    $field->description = $this->_('Select the inputfields where the extra fields should be attached.');
     $field->addOption('', '');
-    $field->label = 'Select Image Inputfields';
+    $field->label = $this->_('Select Image Inputfields');
     $field->attr('name', 'selectedInputfields');
     $field->required = true;
 
@@ -99,29 +102,16 @@ class ImageExtra extends WireData implements Module, ConfigurableModule {
   /**
    * Initialize the module
    *
-   * Implementation of the Module interface
-   *
-   * ProcessWire calls this when the module is loaded. For 'autoload' modules, this will be called
-   * when ProcessWire's API is ready. As a result, this is a good place to attach hooks.
-   *
-   * @see http://processwire.com/apigen/class-Module.html
-   *
-   * @param Template $template Template object holding the form's fields.
-   *
    */
   public function init() {}
 
   /**
-   * Initialize the module
-   *
-   * Implementation of the Module interface
+   * Initialize the module - ready
    *
    * ProcessWire calls this when the module is loaded. For 'autoload' modules, this will be called
    * when ProcessWire's API is ready. As a result, this is a good place to attach hooks.
    *
    * @see http://processwire.com/apigen/class-Module.html
-   *
-   * @param Template $template Template object holding the form's fields.
    *
    */
   public function ready() {
@@ -132,7 +122,6 @@ class ImageExtra extends WireData implements Module, ConfigurableModule {
     if (wire('page')->template->name === 'admin' && !empty($this->input->get->id) || wire('page')->template->name != 'admin') {
       $this->addCustomMethods();
 
-      // @todo: check if this empty check is enough // pagetree is not allow to disappear
       if (wire('page')->name === 'field' || !empty($this->additionalFields)) {
         $this->addHookAfter('InputfieldFile::processInputFile', $this, 'processInputFileExtra');
         $this->addHookAfter('InputfieldFile::processInputAddFile', $this, 'processInputAddFileExtra');
@@ -161,7 +150,7 @@ class ImageExtra extends WireData implements Module, ConfigurableModule {
   }
 
   /**
-   * Add a custom function for each custom field
+   * Add a custom method for each custom field
    *
    */
   public function addCustomMethods() {
@@ -256,6 +245,13 @@ class ImageExtra extends WireData implements Module, ConfigurableModule {
     return (is_null($value)) ? '' : $value;
   }
 
+  /**
+   * add custom method for custom input fields
+   *
+   * @param HookEvent $event
+   * @param string $current
+   *
+   */
   private function addCustomMethod(HookEvent $event, $current) {
     $language = $event->arguments(0);
     $value = $event->arguments(1);
@@ -309,11 +305,12 @@ class ImageExtra extends WireData implements Module, ConfigurableModule {
 
 
   /**
-   * Set a description, optionally parsing JSON language-specific descriptions to separate properties
+   * Sets custom value, optionally parsing JSON language-specific value to separate properties
    *
    * @param string $name
    * @param string $value
    * @param Page|Language Langage to set it for. Omit to determine automatically.
+   * @param Pagefile $pagefile
    * @return this
    *
    */
@@ -360,6 +357,11 @@ class ImageExtra extends WireData implements Module, ConfigurableModule {
     return $pagefile;
   }
 
+  /**
+   * Hook load page field
+   *
+   * @param HookEvent $event
+   */
   public function loadPageFieldExtra(HookEvent $event) {
     $page = $event->arguments(0);
     $field = $event->arguments(1);
@@ -442,6 +444,11 @@ class ImageExtra extends WireData implements Module, ConfigurableModule {
     }
   }
 
+  /**
+   * Hook sleep value
+   *
+   * @param HookEvent $event
+   */
   public function sleepExtraValue(HookEvent $event) {
     $field = $event->arguments(1);
     $value = $event->arguments(2);
@@ -482,6 +489,11 @@ class ImageExtra extends WireData implements Module, ConfigurableModule {
 
   }
 
+  /**
+   * Hook wakeup value
+   *
+   * @param HookEvent $event
+   */
   public function wakeupExtraValue(HookEvent $event) {
     $field = $event->arguments(1);
     $value = $event->arguments(2);
@@ -511,6 +523,11 @@ class ImageExtra extends WireData implements Module, ConfigurableModule {
     }
   }
 
+  /**
+   * Hook process input file add
+   *
+   * @param HookEvent $event
+   */
   public function processInputAddFileExtra(HookEvent $event) {
     $filename = $event->arguments(0);
     $value = $event->object->attributes['value'];
@@ -531,6 +548,11 @@ class ImageExtra extends WireData implements Module, ConfigurableModule {
     }
   }
 
+  /**
+   * Hook file added
+   *
+   * @param HookEvent $event
+   */
   public function fileAddedExtra(HookEvent $event) {
     $p = $event->object->value['page'];
     $image = $event->argumentsByName("pagefile");
@@ -552,6 +574,11 @@ class ImageExtra extends WireData implements Module, ConfigurableModule {
   }
 
 
+  /**
+   * Hook process input file
+   *
+   * @param HookEvent $event
+   */
   public function processInputFileExtra(HookEvent $event) {
     $input = $event->arguments(0);
     $pagefile = $event->arguments(1);
@@ -595,6 +622,11 @@ class ImageExtra extends WireData implements Module, ConfigurableModule {
   }
 
 
+  /**
+   * Hook add extra fields
+   *
+   * @param HookEvent $event
+   */
   public function addExtraFields(HookEvent $event) {
     $if = array();
     foreach ($this->selectedInputfields as $inputfield) {
@@ -647,55 +679,71 @@ class ImageExtra extends WireData implements Module, ConfigurableModule {
     }
   }
 
+  /**
+   * get extra fields
+   *
+   * @param array $data
+   */
   public function getExtraFields($data) {
     return array(
       'captionField' => array(
         'type' => 'InputfieldCheckbox',
-        'label' => 'Add caption field?',
-        'description' => 'Enable Caption Input Field' . PHP_EOL . '(activate the checkbox to enable field `caption`)',
+        'label' => $this->_('Add caption field?'),
+        'description' => $this->_('Enable Caption Input Field' . PHP_EOL . '(activate the checkbox to enable field `caption`)'),
         'checked' => empty($data['captionField']) ? '' : 'checked',
         'columnWidth' => 50
       ),
       'orientationField' => array(
         'type' => 'InputfieldCheckbox',
-        'label' => 'Add orientation field?',
-        'description' => 'Enable Image Orientation Select Field' . PHP_EOL . '(activate the checkbox to enable field `orientation`)',
+        'label' => $this->_('Add orientation field?'),
+        'description' => $this->_('Enable Image Orientation Select Field' . PHP_EOL . '(activate the checkbox to enable field `orientation`)'),
         'checked' => empty($data['orientationField']) ? '' : 'checked',
         'columnWidth' => 50,
-        'notes' => 'You can set up orientation values after saving.'
+        'notes' => $this->_('You can set up orientation values after saving.')
       ),
       'orientationValues' => array(
         'type' => 'InputfieldText',
-        'label' => 'Enter image orientation values',
-        'description' => 'Values for Image Orientation Select Field' . PHP_EOL . '(comma-separated list)',
+        'label' => $this->_('Enter image orientation values'),
+        'description' => $this->_('Values for Image Orientation Select Field' . PHP_EOL . '(comma-separated list)'),
         'value' => $data['orientationValues'],
         'size' => 45,
         'columnWidth' => 25
       ),
       'linkField' => array(
         'type' => 'InputfieldCheckbox',
-        'label' => 'Add internal link field?',
-        'description' => 'Enable Choose-Link Field' . PHP_EOL . '(activate the checkbox to enable field `link`)',
+        'label' => $this->_('Add internal link field?'),
+        'description' => $this->_('Enable Choose-Link Field' . PHP_EOL . '(activate the checkbox to enable field `link`)'),
         'checked' => empty($data['linkField']) ? '' : 'checked',
         'columnWidth' => 50
       ),
       'otherField' => array(
         'type' => 'InputfieldText',
-        'label' => 'Add other text input fields?',
-        'description' => 'Add other fields as simple inputs' . PHP_EOL . '(comma-separated list)',
+        'label' => $this->_('Add other text input fields?'),
+        'description' => $this->_('Add other fields as simple inputs' . PHP_EOL . '(comma-separated list)'),
         'value' => $data['otherField'],
         'size' => 80,
         'columnWidth' => 50,
-        'notes' => 'Do not use `orientation`, `link` or `caption` in this list.'
+        'notes' => $this->_('Do not use `orientation`, `link` or `caption` in this list.')
       ),
     );
   }
 
+  /**
+   * merge data
+   *
+   * @param string $fieldName
+   */
   private function mergeData($fieldName) {
     $fieldConfig = $this->fields->get($fieldName)->data;
     return array_merge(self::$defaults, $fieldConfig);
   }
 
+  /**
+   * get additional input fields
+   *
+   * @param array $data
+   * @param string $name
+   */
   private function getAdditionalInputFields($data, $name) {
     // create basic array structure
     foreach (array('other', 'orientation', 'link') as $item) {
@@ -737,6 +785,11 @@ class ImageExtra extends WireData implements Module, ConfigurableModule {
     $this->additionalFields['link'][$name] = $if ? true : false;
   }
 
+  /**
+   * render extra fields
+   *
+   * @param HookEvent $event
+   */
   public function renderExtraFields(HookEvent $event) {
     $pagefile = $event->arguments[0];
     $id = $event->arguments[1];
@@ -774,6 +827,11 @@ class ImageExtra extends WireData implements Module, ConfigurableModule {
     $event->return = implode('', $splitOut);
   }
 
+  /**
+   * check table columns
+   *
+   * @param HookEvent $event
+   */
   public function checkTableColumns(HookEvent $event) {
     $columns = array();
     foreach (self::$defaults as $add => $default) {
@@ -837,6 +895,15 @@ class ImageExtra extends WireData implements Module, ConfigurableModule {
     }
   }
 
+  /**
+   * render input item field
+   * for caption and other fields
+   *
+   * @param Pagefile $pagefile
+   * @param string $id
+   * @param int $n
+   * @param string $current
+   */
   protected function renderInputItemField(Pagefile $pagefile, $id, $n, $current) {
     $out = '';
     $tabs = '';
@@ -890,7 +957,15 @@ class ImageExtra extends WireData implements Module, ConfigurableModule {
     return $out;
   }
 
-
+  /**
+   * render select item field
+   * 
+   * @param Pagefile $pagefile
+   * @param string $id
+   * @param int $n
+   * @param string $current
+   * @param array $data
+   */
   protected function renderSelectItemField(Pagefile $pagefile, $id, $n, $current, $data) {
     $fieldName = $current . '_' . $id;
 
@@ -909,6 +984,14 @@ class ImageExtra extends WireData implements Module, ConfigurableModule {
     return $out;
   }
 
+  /**
+   * render link item field
+   *
+   * @param Pagefile $pagefile
+   * @param string $id
+   * @param int $n
+   * @param string $current
+   */
   protected function renderLinkItemField(Pagefile $pagefile, $id, $n, $current) {
     $fieldName = $current . '_' . $id;
     $field = $this->modules->get('InputfieldPageListSelect');
