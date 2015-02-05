@@ -470,7 +470,11 @@ class ImageExtra extends WireData implements Module, ConfigurableModule {
     if (!empty($tmp)) {
       $sleepValue = array();
       foreach ($event->return as $key => $e) {
-        $sleepValue[] = $e + $tmp['other'][$key] + $tmp['orientation'][$key] + $tmp['link'][$key];
+        $other = (array_key_exists($key, $tmp['other'])) ? $tmp['other'][$key] : array();
+        $orientation = (array_key_exists($key, $tmp['orientation'])) ? $tmp['orientation'][$key] : array();
+        $link = (array_key_exists($key, $tmp['link'])) ? $tmp['link'][$key] : array();
+
+        $sleepValue[] = $e + $other + $orientation + $link;
       }
 
       $event->return = $sleepValue;
@@ -541,7 +545,7 @@ class ImageExtra extends WireData implements Module, ConfigurableModule {
     }
 
     if (!empty($this->additionalFields['link'][$name])) {
-      $item->set('link', 0);
+      $image->set('link', 0);
     }
 
     $p->save($name);
