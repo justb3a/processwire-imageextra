@@ -55,7 +55,6 @@ class ImageExtra extends WireData implements Module, ConfigurableModule {
     'selectedInputfields' => 'InputfieldImage'
   );
 
-
   /**
    * Retrieves the list of config input fields
    *
@@ -91,6 +90,8 @@ class ImageExtra extends WireData implements Module, ConfigurableModule {
     return $fields;
   }
 
+  protected $additionalFields = array();
+
   /**
    * Initialize the module
    *
@@ -104,8 +105,7 @@ class ImageExtra extends WireData implements Module, ConfigurableModule {
    * @param Template $template Template object holding the form's fields.
    *
    */
-  public function init() {
-  }
+  public function init() {}
 
   /**
    * Initialize the module
@@ -130,6 +130,8 @@ class ImageExtra extends WireData implements Module, ConfigurableModule {
 
       if (wire('page')->name === 'field' || !empty($this->additionalFields)) {
         $this->addHookAfter('InputfieldFile::processInputFile', $this, 'processInputFileExtra');
+        $this->addHookAfter('InputfieldFile::processInputAddFile', $this, 'processInputAddFileExtra');
+        $this->addHookBefore('InputfieldFile::fileAdded', $this, 'fileAddedExtra');
         $this->addHookAfter('Fieldtype::loadPageField', $this, 'loadPageFieldExtra');
         $this->addHookAfter('FieldtypeFile::sleepValue', $this, 'sleepExtraValue');
         $this->addHookAfter('FieldtypeFile::wakeupValue', $this, 'wakeupExtraValue');
@@ -164,18 +166,26 @@ class ImageExtra extends WireData implements Module, ConfigurableModule {
       foreach ($fieldNames as $fieldName) {
         $fieldConfig = $this->fields->get($fieldName);
         if (!empty($fieldConfig)) {
-          $fieldConfig = $fieldConfig->data;
-          $this->additionalFields = $this->getAdditionalInputFields($fieldConfig);
-
-          foreach ($this->additionalFields as $current) {
-            $this->addHookProperty('Pageimage::' . $current, function($event) { });
-            $this->addHook('Pageimage::' . $current, function($event) {
-              $event->return = $this->addCustomMethod($event, $event->method);
-            });
-          }
+          $this->getAdditionalInputFields($fieldConfig->data, $fieldName);
         }
       }
+
+      foreach ($this->array_multi_merge($this->additionalFields) as $current) {
+        $this->addHookProperty('Pageimage::' . $current, function($event) { });
+        $this->addHook('Pageimage::' . $current, function($event) {
+          $event->return = $this->addCustomMethod($event, $event->method);
+        });
+      }
     }
+  }
+
+  private function array_multi_merge($array) {
+    $new = array();
+    foreach ($array as $items) {
+      foreach ($items as $item)
+        $new[$item] = $item;
+    }
+    return $new;
   }
 
   private function addCustomMethod(HookEvent $event, $current) {
@@ -183,31 +193,30 @@ class ImageExtra extends WireData implements Module, ConfigurableModule {
     $value = $event->arguments(1);
 
     if (!is_null($value)) {
-      return ($language === true) ? $this->setExtra($current, $value) : $this->setExtra($current, $value, $language);
+      return ($language === true) ? $this->setExtra($current, $value, null, $event->object) : $this->setExtra($current, $value, $language, $event->object);
     }
 
     if ((is_string($language) || is_int($language)) && $this->wire('languages')) {
-      // convert named or ID'd languages to Language object
       $language = $this->wire('languages')->get($language);
     }
 
     if (is_null($language)) {
-      // return description for current user language, or inherit from default if not available
+      // return for current user language, or inherit from default if not available
       $user = $this->wire('user');
       $value = null;
-      if ($user->language && $user->language->id) $value = parent::get($current . $user->language);
+      if ($user->language && $user->language->id) $value = $event->object->get($current . $user->language);
       if (empty($value)) {
         // inherit default language value
-        $value = parent::get($current);
+        $value = $event->object->get($current);
       }
     } else if ($language === true) {
       // return JSON string of all languages if applicable
       $languages = $this->wire('languages');
       if ($languages && $languages->count() > 1) {
-        $values = array(0 => parent::get($current));
+        $values = array(0 => $event->object->get($current));
         foreach ($languages as $lang) {
           if ($lang->isDefault()) continue;
-          $v = parent::get($current . $lang);
+          $v = $event->object->get($current . $lang);
           if (empty($v)) continue;
           $values[$lang->id] = $v;
         }
@@ -215,13 +224,13 @@ class ImageExtra extends WireData implements Module, ConfigurableModule {
         $value = json_encode($values, $flags);
       } else {
         // no languages present so just return string with description
-        $value = parent::get($current);
+        $value = $event->object->get($current);
       }
 
     } else if (is_object($language) && $language->id) {
-      // return description for specific language or blank if not available
-      if ($language->isDefault()) $value = parent::get($current);
-        else $value = parent::get($current . $language);
+      // return for specific language or blank if not available
+      if ($language->isDefault()) $value = $event->object->get($current);
+        else $value = $event->object->get($current . $language);
     }
 
     // we only return strings, so return blank rather than null
@@ -231,20 +240,20 @@ class ImageExtra extends WireData implements Module, ConfigurableModule {
   }
 
 
-
-	/**
-	 * Set a description, optionally parsing JSON language-specific descriptions to separate properties
-	 *
-	 * @param string $name
-	 * @param string $value
-	 * @param Page|Language Langage to set it for. Omit to determine automatically.
-	 * @return this
-	 *
-	 */
-	protected function setExtra($name, $value, Page $language = null) {
+  /**
+   * Set a description, optionally parsing JSON language-specific descriptions to separate properties
+   *
+   * @param string $name
+   * @param string $value
+   * @param Page|Language Langage to set it for. Omit to determine automatically.
+   * @return this
+   *
+   */
+  protected function setExtra($name, $value, Page $language = null, $pagefile) {
     if (!is_null($language) && $language->id) {
-      if(!$language->isDefault()) $name .= $language->id;
-      parent::set($name, $this->wire('sanitizer')->textarea($value));
+      if (!$language->isDefault()) $name .= $language->id;
+      $value = $this->wire('sanitizer')->textarea($value);
+      $pagefile->set($name, $this->wire('sanitizer')->textarea($value));
       return $this;
     }
 
@@ -263,7 +272,8 @@ class ImageExtra extends WireData implements Module, ConfigurableModule {
         // first item is always default language. this ensures that this will still
         // work even if language support is later uninstalled.
         $item = $n > 0 ? $name . $id : $name;
-        parent::set($item, $this->wire('sanitizer')->textarea($v));
+        $value = $this->wire('sanitizer')->textarea($v);
+        $pagefile->set($item, $value);
         $n++;
       }
     } else {
@@ -272,19 +282,21 @@ class ImageExtra extends WireData implements Module, ConfigurableModule {
       $language = $this->wire('user')->language;
       $value = $this->wire('sanitizer')->textarea($value);
 
-      if($languages && $language && !$language->isDefault()) {
-        parent::set($name . $language, $value);
+      if ($languages && $language && !$language->isDefault()) {
+        $pagefile->set($name . $language, $value);
       } else {
-        parent::set($name, $value);
+        $pagefile->set($name, $value);
       }
     }
 
-    return $this;
+    return $pagefile;
   }
 
   public function loadPageFieldExtra(HookEvent $event) {
     $page = $event->arguments(0);
     $field = $event->arguments(1);
+
+    if (!$page->id || !$field->id) return null;
 
     $if = array();
     foreach ($this->selectedInputfields as $inputfield) {
@@ -295,16 +307,22 @@ class ImageExtra extends WireData implements Module, ConfigurableModule {
       $database = $this->wire('database');
       $isMulti = $field->type instanceof FieldtypeMulti;
       $page_id = (int) $page->id;
-      $table = $database->escapeTable($field->table);
-      $query = new DatabaseQuerySelect();
 
-      foreach ($this->additionalFields as $add) {
+      $query = new DatabaseQuerySelect();
+      $tmpAddFields = array();
+      $count = 0;
+      foreach ($this->additionalFields[$field->name] as $add) {
         $query->select("field_{$field->name}.$add AS `" . $field->name . "__$add`");
+        $tmpAddFields[] = $add;
+        $count++;
       }
 
+      if ($count === 0 || empty($tmpAddFields)) return null;
+
+      $table = $database->escapeTable($field->table);
       $query->where("$table.pages_id='$page_id'");
       $query->from($table);
-      if($isMulti) $query->orderby('sort');
+      if ($isMulti) $query->orderby('sort');
 
       $value = null;
       $stmt = $query->execute();
@@ -314,24 +332,30 @@ class ImageExtra extends WireData implements Module, ConfigurableModule {
 
       if (!$result) return $value;
 
+      $values = array();
       while($row = $stmt->fetch(PDO::FETCH_ASSOC)) {
-        foreach ($this->additionalFields as $add) {
+        $value = array();
+        foreach ($tmpAddFields as $add) {
           $key = $fieldName . '__' . $add;
           $value[$add] = $row[$key];
-
-          // if there is just one 'data' field here, then don't bother with the array, just make data the value
-          if(count($value) == 1 && isset($value['data'])) $value = $value['data'];
-          if(!$isMulti) break;
         }
+
+        // if there is just one 'data' field here, then don't bother with the array, just make data the value
+        if (count($value) == 1 && isset($value['data'])) $value = $value['data'];
+
+        if (!$isMulti) break;
+        $values[] = $value;
       }
+
       $stmt->closeCursor();
 
-      // if($isMulti && count($values)) $value = $values;
+      if ($isMulti && count($values)) $value = $values;
 
       $return = array();
       if (!empty($event->return)) {
-        foreach ($event->return as $r) {
-          $return = $r + $value;
+
+        foreach ($event->return as $key => $r) {
+          $return[] = $r + $value[$key];
         }
 
         $event->return = $return;
@@ -340,37 +364,81 @@ class ImageExtra extends WireData implements Module, ConfigurableModule {
   }
 
   public function sleepExtraValue(HookEvent $event) {
-    $page = $event->arguments(0);
     $field = $event->arguments(1);
     $value = $event->arguments(2);
 
-    $sleepValue = array();
-    foreach ($event->return as $e) {
-      foreach ($value as $v) {
-        foreach ($this->additionalFields as $add) {
-          $e[$add] = $v->{$add}(true);
+    $tmp = array();
+    foreach ($value as $pagefile) {
+      foreach ($this->additionalFields[$field->name] as $add) {
+        if (!is_null($pagefile->$add)) {
+          $tmp[][$add] = $pagefile->$add(true);
         }
-        $sleepValue[] = $e;
       }
     }
 
-    $event->return = $sleepValue;
+    if (!empty($tmp)) {
+      $sleepValue = array();
+      foreach ($event->return as $key => $e) {
+        $sleepValue[] = $e + $tmp[$key];
+      }
+
+      $event->return = $sleepValue;
+    }
+
   }
 
   public function wakeupExtraValue(HookEvent $event) {
-    $page = $event->arguments(0);
     $field = $event->arguments(1);
     $value = $event->arguments(2);
 
-    if(!is_array($value) || array_key_exists('data', $value)) $value = array($value);
+    $table = $this->db->escapeTable($field->table);
+
+    $chkcol = $this->db->query("SHOW COLUMNS FROM `$table`");
+    $columns = array();
+    while ($row = mysqli_fetch_assoc($chkcol)) {
+      $columns[] = $row['Field'];
+    }
+
+    if (!is_array($value) || array_key_exists('data', $value)) $value = array($value);
+
+    $pagefiles = array();
     foreach ($event->return as $pagefile) {
-      foreach($value as $v) {
-        foreach ($this->additionalFields as $add) {
-          $pagefile->{$add}(true, $v[$add]);
-        }
+      $pagefiles[] = $pagefile;
+    }
+
+    foreach ($value as $key => $v) {
+      if (empty($v['data'])) continue;
+
+      foreach ($this->additionalFields[$field->name] as $add) {
+        $pagefile = $pagefiles[$key];
+        $pagefile->$add(true, $v[$add]);
       }
     }
   }
+
+  public function processInputAddFileExtra(HookEvent $event) {
+    $filename = $event->arguments(0);
+    $value = $event->object->attributes['value'];
+    $total = count($value);
+
+    $item = $value->last();
+    foreach ($this->additionalFields[$event->object->name] as $add) {
+      $item->set($add, '');
+    }
+  }
+
+  public function fileAddedExtra(HookEvent $event) {
+    $p = $event->object->value['page'];
+    $image = $event->argumentsByName("pagefile");
+    $name = $event->object->name;
+
+    foreach ($this->additionalFields[$name] as $add) {
+      $image->set($add, '');
+    }
+
+    $p->save($name);
+  }
+
 
   public function processInputFileExtra(HookEvent $event) {
     $input = $event->arguments(0);
@@ -381,16 +449,24 @@ class ImageExtra extends WireData implements Module, ConfigurableModule {
     $changed = false;
     $languages = $this->noLang ? null : $this->wire('languages');
 
+    foreach ($this->additionalFields[$name] as $key) {
+      if (isset($input[$key . '_' . $id])) {
+        $value = trim($input[$key . '_' . $id]);
+        if ($value != $pagefile->$key) {
+          $pagefile->$key = $value;
+          $changed = true;
+        }
+      }
+    }
 
     // multi-language additional fields
     if ($languages) foreach($languages as $language) {
-      foreach ($this->additionalFields as $add) {
+      foreach ($this->additionalFields[$name] as $add) {
         $key = $language->isDefault() ? $add . '_' . $id : "$add{$language->id}_$id";
-        if(!isset($input[$key])) continue;
+        if (!isset($input[$key])) continue;
         $value = trim($input[$key]);
-        if($value != $pagefile->{$add}($language)) {
+        if ($value != $pagefile->{$add}($language)) {
           $pagefile->{$add}($language, $value);
-          $pagefile->{$add} = $pagefile->{$add}($language, $value);
           $changed = true;
         }
       }
@@ -498,21 +574,23 @@ class ImageExtra extends WireData implements Module, ConfigurableModule {
     return array_merge(self::$defaults, $fieldConfig);
   }
 
-  private function getAdditionalInputFields($data) {
-    $additionalFields = array();
+  private function getAdditionalInputFields($data, $name) {
     if (isset($data['captionField'])) {
-      $additionalFields = ($data['captionField'] > 0) ? array('caption') : array();
+      if ($data['captionField'] > 0) {
+        $this->additionalFields[$name]['caption'] = 'caption';
+      }
     }
 
     if (isset($data['otherField'])) {
       if (!empty($data['otherField'])) {
         $others = preg_replace('/\s+/', '', $data['otherField']);
         $others = str_replace(';', ',', $others);
-        array_splice($additionalFields, 1, 0, explode(',', $others));
+
+        foreach (explode(',', $others) as $other) {
+          $this->additionalFields[$name][$other] = $other;
+        }
       }
     }
-
-    return $additionalFields;
   }
 
   public function renderExtraFields(HookEvent $event) {
@@ -523,10 +601,9 @@ class ImageExtra extends WireData implements Module, ConfigurableModule {
     $outAdditional = '';
 
     $data = $this->mergeData($event->object->name);
-    $additionalFields = $this->getAdditionalInputFields($data);
 
-    if (is_array($additionalFields) && !empty($additionalFields)) {
-      foreach ($additionalFields as $field) {
+    if (!empty($this->additionalFields)) {
+      foreach ($this->additionalFields[$event->object->name] as $field) {
         $outAdditional .= $this->renderInputItemField($pagefile, $id, $n, $field);
       }
     }
