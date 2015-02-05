@@ -623,6 +623,7 @@ class ImageExtra extends WireData implements Module, ConfigurableModule {
         // add orientation field, reduce column width
         if ($name === 'orientationField' && (int)$data['orientationField'] > 0) {
           $s['columnWidth'] = 25;
+          $s['notes'] = '';
         }
 
         $field = $this->modules->get($s['type']);
@@ -656,7 +657,8 @@ class ImageExtra extends WireData implements Module, ConfigurableModule {
         'label' => 'Add orientation field?',
         'description' => 'Enable Image Orientation Select Field' . PHP_EOL . '(activate the checkbox to enable field `orientation`)',
         'checked' => empty($data['orientationField']) ? '' : 'checked',
-        'columnWidth' => 50
+        'columnWidth' => 50,
+        'notes' => 'You can set up orientation values after saving.'
       ),
       'orientationValues' => array(
         'type' => 'InputfieldText',
@@ -679,7 +681,8 @@ class ImageExtra extends WireData implements Module, ConfigurableModule {
         'description' => 'Add other fields as simple inputs' . PHP_EOL . '(comma-separated list)',
         'value' => $data['otherField'],
         'size' => 80,
-        'columnWidth' => 50
+        'columnWidth' => 50,
+        'notes' => 'Do not use `orientation`, `link` or `caption` in this list.'
       ),
     );
   }
