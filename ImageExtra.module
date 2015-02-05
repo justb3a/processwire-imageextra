@@ -503,7 +503,7 @@ class ImageExtra extends WireData implements Module, ConfigurableModule {
     }
 
     if (!empty($this->additionalFields['orientation'][$name])) {
-      $item->set('orientation', '');
+      $image->set('orientation', '');
     }
 
     $p->save($name);
