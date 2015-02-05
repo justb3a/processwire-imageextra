@@ -130,9 +130,9 @@ class ImageExtra extends WireData implements Module, ConfigurableModule {
       $this->addCustomMethods();
 
       if (wire('page')->name === 'field' || !empty($this->additionalFields)) {
-        $this->addHookAfter('InputfieldFile::processInput', $this, 'processInputExtra');
         $this->addHookAfter('InputfieldFile::processInputFile', $this, 'processInputFileExtra');
         $this->addHookAfter('InputfieldFile::processInputAddFile', $this, 'processInputAddFileExtra');
+        $this->addHookBefore('InputfieldFile::fileAdded', $this, 'fileAddedExtra');
         $this->addHookAfter('Fieldtype::loadPageField', $this, 'loadPageFieldExtra');
         $this->addHookAfter('FieldtypeFile::sleepValue', $this, 'sleepExtraValue');
         $this->addHookAfter('FieldtypeFile::wakeupValue', $this, 'wakeupExtraValue');
@@ -464,43 +464,25 @@ class ImageExtra extends WireData implements Module, ConfigurableModule {
     }
   }
 
-  public function processInputExtra(HookEvent $event) {
-    $input = $event->arguments(0);
-    // var_dump($input);
-  }
-
   public function processInputAddFileExtra(HookEvent $event) {
     $filename = $event->arguments(0);
     $value = $event->object->attributes['value'];
     $total = count($value);
 
-    // var_dump($filename);
-    // var_dump($total);
-    // var_dump($value);
-
     $item = $value->last();
-    // var_dump($filename);
-    // $item->data['caption'] = '';
-    // $item->object->attributes['data']
+    // @todo: add foreach additionalfields
     $item->set('caption', '');
-    // var_dump($item->data);
-    // var_dump($item->data);
-    //
-    // try {
-    //   $item->caption = '';
-    // } catch (Exception $e) {
-    //   throw new WireException($e->getMessage());
-    // }
+  }
 
-    // exit;
-    // foreach ($value as $key => $val) {
-    //   var_dump($val->description);
-    // }
-    //
-    // $caption = '';
-    //
-    // var_dump($total);
-    // exit;
+  public function fileAddedExtra(HookEvent $event) {
+    // @todo: substitute images
+    $inputfield = $event->object;
+
+    $p = $inputfield->value['page'];
+    $image = $event->argumentsByName("pagefile");
+    // @todo: add foreach additionalfields
+    $image->set('caption', '');
+    $p->save('images');
   }
 
 
