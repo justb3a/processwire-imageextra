@@ -82,9 +82,9 @@ class ImageExtra extends WireData implements Module, ConfigurableModule {
 
     $field = $modules->get('InputfieldAsmSelect');
     $field->attr('value', $data['selectedInputfields']);
-    $field->description = $this->_('Select the inputfields where the extra fields should be attached.');
+    $field->description = __('Select the inputfields where the extra fields should be attached.');
     $field->addOption('', '');
-    $field->label = $this->_('Select Image Inputfields');
+    $field->label = __('Select Image Inputfields');
     $field->attr('name', 'selectedInputfields');
     $field->required = true;
 
