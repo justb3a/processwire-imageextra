@@ -166,17 +166,26 @@ class ImageExtra extends WireData implements Module, ConfigurableModule {
       foreach ($fieldNames as $fieldName) {
         $fieldConfig = $this->fields->get($fieldName);
         if (!empty($fieldConfig)) {
-          $this->getAdditionalInputFields($fieldConfig->data);
+          $this->getAdditionalInputFields($fieldConfig->data, $fieldName);
         }
       }
 
-      foreach ($this->additionalFields as $current) {
+      foreach ($this->array_multi_merge($this->additionalFields) as $current) {
         $this->addHookProperty('Pageimage::' . $current, function($event) { });
         $this->addHook('Pageimage::' . $current, function($event) {
           $event->return = $this->addCustomMethod($event, $event->method);
         });
       }
     }
+  }
+
+  private function array_multi_merge($array) {
+    $new = array();
+    foreach ($array as $items) {
+      foreach ($items as $item)
+        $new[$item] = $item;
+    }
+    return $new;
   }
 
   private function addCustomMethod(HookEvent $event, $current) {
@@ -298,27 +307,19 @@ class ImageExtra extends WireData implements Module, ConfigurableModule {
       $database = $this->wire('database');
       $isMulti = $field->type instanceof FieldtypeMulti;
       $page_id = (int) $page->id;
-      $table = $database->escapeTable($field->table);
-
-      $chkcol = $this->db->query("SHOW COLUMNS FROM `$table`");
-      $columns = array();
-      while ($row = mysqli_fetch_assoc($chkcol)) {
-        $columns[] = $row['Field'];
-      }
 
       $query = new DatabaseQuerySelect();
       $tmpAddFields = array();
       $count = 0;
-      foreach ($this->additionalFields as $add) {
-        if (in_array($add, $columns)) {
-          $query->select("field_{$field->name}.$add AS `" . $field->name . "__$add`");
-          $tmpAddFields[] = $add;
-          $count++;
-        }
+      foreach ($this->additionalFields[$field->name] as $add) {
+        $query->select("field_{$field->name}.$add AS `" . $field->name . "__$add`");
+        $tmpAddFields[] = $add;
+        $count++;
       }
 
       if ($count === 0 || empty($tmpAddFields)) return null;
 
+      $table = $database->escapeTable($field->table);
       $query->where("$table.pages_id='$page_id'");
       $query->from($table);
       if ($isMulti) $query->orderby('sort');
@@ -365,21 +366,12 @@ class ImageExtra extends WireData implements Module, ConfigurableModule {
   public function sleepExtraValue(HookEvent $event) {
     $field = $event->arguments(1);
     $value = $event->arguments(2);
-    $table = $this->db->escapeTable($field->table);
-
-    $chkcol = $this->db->query("SHOW COLUMNS FROM `$table`");
-    $columns = array();
-    while ($row = mysqli_fetch_assoc($chkcol)) {
-      $columns[] = $row['Field'];
-    }
 
     $tmp = array();
     foreach ($value as $pagefile) {
-      foreach ($this->additionalFields as $add) {
-        if (in_array($add, $columns)) {
-          if (!is_null($pagefile->$add)) {
-            $tmp[][$add] = $pagefile->$add(true);
-          }
+      foreach ($this->additionalFields[$field->name] as $add) {
+        if (!is_null($pagefile->$add)) {
+          $tmp[][$add] = $pagefile->$add(true);
         }
       }
     }
@@ -417,11 +409,9 @@ class ImageExtra extends WireData implements Module, ConfigurableModule {
     foreach ($value as $key => $v) {
       if (empty($v['data'])) continue;
 
-      foreach ($this->additionalFields as $add) {
-        if (in_array($add, $columns)) {
-          $pagefile = $pagefiles[$key];
-          $pagefile->$add(true, $v[$add]);
-        }
+      foreach ($this->additionalFields[$field->name] as $add) {
+        $pagefile = $pagefiles[$key];
+        $pagefile->$add(true, $v[$add]);
       }
     }
   }
@@ -432,17 +422,21 @@ class ImageExtra extends WireData implements Module, ConfigurableModule {
     $total = count($value);
 
     $item = $value->last();
-    // @todo: add foreach additionalfields
-    $item->set('caption', '');
+    foreach ($this->additionalFields[$event->object->name] as $add) {
+      $item->set($add, '');
+    }
   }
 
   public function fileAddedExtra(HookEvent $event) {
     $p = $event->object->value['page'];
     $image = $event->argumentsByName("pagefile");
-    // @todo: add foreach additionalfields
-    $image->set('caption', '');
-    // @todo: substitute images
-    $p->save('images');
+    $name = $event->object->name;
+
+    foreach ($this->additionalFields[$name] as $add) {
+      $image->set($add, '');
+    }
+
+    $p->save($name);
   }
 
 
@@ -455,10 +449,10 @@ class ImageExtra extends WireData implements Module, ConfigurableModule {
     $changed = false;
     $languages = $this->noLang ? null : $this->wire('languages');
 
-    foreach ($this->additionalFields as $key) {
-      if(isset($input[$key . '_' . $id])) {
+    foreach ($this->additionalFields[$name] as $key) {
+      if (isset($input[$key . '_' . $id])) {
         $value = trim($input[$key . '_' . $id]);
-        if($value != $pagefile->$key) {
+        if ($value != $pagefile->$key) {
           $pagefile->$key = $value;
           $changed = true;
         }
@@ -467,9 +461,9 @@ class ImageExtra extends WireData implements Module, ConfigurableModule {
 
     // multi-language additional fields
     if ($languages) foreach($languages as $language) {
-      foreach ($this->additionalFields as $add) {
+      foreach ($this->additionalFields[$name] as $add) {
         $key = $language->isDefault() ? $add . '_' . $id : "$add{$language->id}_$id";
-        if(!isset($input[$key])) continue;
+        if (!isset($input[$key])) continue;
         $value = trim($input[$key]);
         if ($value != $pagefile->{$add}($language)) {
           $pagefile->{$add}($language, $value);
@@ -580,10 +574,10 @@ class ImageExtra extends WireData implements Module, ConfigurableModule {
     return array_merge(self::$defaults, $fieldConfig);
   }
 
-  private function getAdditionalInputFields($data) {
+  private function getAdditionalInputFields($data, $name) {
     if (isset($data['captionField'])) {
       if ($data['captionField'] > 0) {
-        $this->additionalFields['caption'] = 'caption';
+        $this->additionalFields[$name]['caption'] = 'caption';
       }
     }
 
@@ -593,7 +587,7 @@ class ImageExtra extends WireData implements Module, ConfigurableModule {
         $others = str_replace(';', ',', $others);
 
         foreach (explode(',', $others) as $other) {
-          $this->additionalFields[$other] = $other;
+          $this->additionalFields[$name][$other] = $other;
         }
       }
     }
@@ -606,21 +600,11 @@ class ImageExtra extends WireData implements Module, ConfigurableModule {
     $out = $event->return;
     $outAdditional = '';
 
-    $table = $this->db->escapeTable('field_' . $event->object->name);
-    $chkcol = $this->db->query("SHOW COLUMNS FROM `$table`");
-    $columns = array();
-    while ($row = mysqli_fetch_assoc($chkcol)) {
-      $columns[] = $row['Field'];
-    }
-
-
     $data = $this->mergeData($event->object->name);
 
     if (!empty($this->additionalFields)) {
-      foreach ($this->additionalFields as $field) {
-        if (in_array($field, $columns)) {
-          $outAdditional .= $this->renderInputItemField($pagefile, $id, $n, $field);
-        }
+      foreach ($this->additionalFields[$event->object->name] as $field) {
+        $outAdditional .= $this->renderInputItemField($pagefile, $id, $n, $field);
       }
     }
 
