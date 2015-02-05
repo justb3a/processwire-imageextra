@@ -421,27 +421,28 @@ class ImageExtra extends WireData implements Module, ConfigurableModule {
     $field = $event->arguments(1);
     $value = $event->arguments(2);
 
-    $tmp = array();
+    $tmp = array(
+      'other' => array(),
+      'orientation' => array()
+    );
     foreach ($value as $pagefile) {
       // check other fields
       foreach ($this->additionalFields['other'][$field->name] as $add) {
         if (!is_null($pagefile->$add)) {
-          $tmp[][$add] = $pagefile->$add(true);
+          $tmp['other'][][$add] = $pagefile->$add(true);
         }
       }
 
       // check orientation field
       if (!empty($this->additionalFields['orientation'][$field->name])) {
-        if (!is_null($pagefile->orientation)) {
-          $tmp[]['orientation'] = $pagefile->orientation();
-        }
+        $tmp['orientation'][]['orientation'] = $pagefile->orientation;
       }
     }
 
     if (!empty($tmp)) {
       $sleepValue = array();
       foreach ($event->return as $key => $e) {
-        $sleepValue[] = $e + $tmp[$key];
+        $sleepValue[] = $e + $tmp['other'][$key] + $tmp['orientation'][$key];
       }
 
       $event->return = $sleepValue;
@@ -858,7 +859,7 @@ class ImageExtra extends WireData implements Module, ConfigurableModule {
     $out = "<hr>" .
       "<div class='InputfieldContent'>" .
       "<label for='$fieldName'>" . ucfirst($current) . "</label>" .
-      "<select name='select_$fieldName' size='1'>" . $options . "</select>" .
+      "<select name='$fieldName' size='1'>" . $options . "</select>" .
       "</div>";
 
     return $out;
