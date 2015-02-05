@@ -55,7 +55,6 @@ class ImageExtra extends WireData implements Module, ConfigurableModule {
     'selectedInputfields' => 'InputfieldImage'
   );
 
-
   /**
    * Retrieves the list of config input fields
    *
@@ -133,6 +132,7 @@ class ImageExtra extends WireData implements Module, ConfigurableModule {
       if (wire('page')->name === 'field' || !empty($this->additionalFields)) {
         $this->addHookAfter('InputfieldFile::processInput', $this, 'processInputExtra');
         $this->addHookAfter('InputfieldFile::processInputFile', $this, 'processInputFileExtra');
+        $this->addHookAfter('InputfieldFile::processInputAddFile', $this, 'processInputAddFileExtra');
         $this->addHookAfter('Fieldtype::loadPageField', $this, 'loadPageFieldExtra');
         $this->addHookAfter('FieldtypeFile::sleepValue', $this, 'sleepExtraValue');
         $this->addHookAfter('FieldtypeFile::wakeupValue', $this, 'wakeupExtraValue');
@@ -199,22 +199,26 @@ class ImageExtra extends WireData implements Module, ConfigurableModule {
       $user = $this->wire('user');
       $value = null;
       // if ($user->language && $user->language->id) $value = parent::get($current . $user->language);
-      if ($user->language && $user->language->id) $value = $pagefile->get($current . $user->language);
+      // if ($user->language && $user->language->id) $value = $pagefile->get($current . $user->language);
+      if ($user->language && $user->language->id) $value = $event->object->get($current . $user->language);
       if (empty($value)) {
         // inherit default language value
         // $value = parent::get($current);
-        $value = $pagefile->get($current);
+        // $value = $pagefile->get($current);
+        $value = $event->object->get($current);
       }
     } else if ($language === true) {
       // return JSON string of all languages if applicable
       $languages = $this->wire('languages');
       if ($languages && $languages->count() > 1) {
         // $values = array(0 => parent::get($current));
-        $values = array(0 => $pagefile->get($current));
+        // $values = array(0 => $pagefile->get($current));
+        $values = array(0 => $event->object->get($current));
         foreach ($languages as $lang) {
           if ($lang->isDefault()) continue;
           // $v = parent::get($current . $lang);
-          $v = $pagefile->get($current . $lang);
+          // $v = $pagefile->get($current . $lang);
+          $v = $event->object->get($current . $lang);
           if (empty($v)) continue;
           $values[$lang->id] = $v;
         }
@@ -223,15 +227,18 @@ class ImageExtra extends WireData implements Module, ConfigurableModule {
       } else {
         // no languages present so just return string with description
         // $value = parent::get($current);
-        $value = $pagefile->get($current);
+        // $value = $pagefile->get($current);
+        $value = $event->object->get($current);
       }
 
     } else if (is_object($language) && $language->id) {
       // return description for specific language or blank if not available
       // if ($language->isDefault()) $value = parent::get($current);
-      if ($language->isDefault()) $value = $pagefile->get($current);
+      // if ($language->isDefault()) $value = $pagefile->get($current);
+      if ($language->isDefault()) $value = $event->object->get($current);
         // else $value = parent::get($current . $language);
-        else $value = $pagefile->get($current . $language);
+        // else $value = $pagefile->get($current . $language);
+        else $value = $event->object->get($current . $language);
     }
 
     // we only return strings, so return blank rather than null
@@ -240,6 +247,18 @@ class ImageExtra extends WireData implements Module, ConfigurableModule {
     return $value;
   }
 
+
+	/**
+	 * Set the parent of this Inputfield
+	 *
+	 * @param InputfieldWrapper $parent
+	 * @return $this
+	 *
+	 */
+	public function setParent(InputfieldWrapper $parent) {
+		$this->parent = $parent;
+		return $this;
+	}
 
 
 	/**
@@ -449,6 +468,41 @@ class ImageExtra extends WireData implements Module, ConfigurableModule {
     $input = $event->arguments(0);
     // var_dump($input);
   }
+
+  public function processInputAddFileExtra(HookEvent $event) {
+    $filename = $event->arguments(0);
+    $value = $event->object->attributes['value'];
+    $total = count($value);
+
+    // var_dump($filename);
+    // var_dump($total);
+    // var_dump($value);
+
+    $item = $value->last();
+    // var_dump($filename);
+    // $item->data['caption'] = '';
+    // $item->object->attributes['data']
+    $item->set('caption', '');
+    // var_dump($item->data);
+    // var_dump($item->data);
+    //
+    // try {
+    //   $item->caption = '';
+    // } catch (Exception $e) {
+    //   throw new WireException($e->getMessage());
+    // }
+
+    // exit;
+    // foreach ($value as $key => $val) {
+    //   var_dump($val->description);
+    // }
+    //
+    // $caption = '';
+    //
+    // var_dump($total);
+    // exit;
+  }
+
 
   public function processInputFileExtra(HookEvent $event) {
     $input = $event->arguments(0);
