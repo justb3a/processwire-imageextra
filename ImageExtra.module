@@ -713,7 +713,7 @@ class ImageExtra extends WireData implements Module, ConfigurableModule {
     }
 
     if ((int)$data['linkField'] > 0) {
-      $outAdditional .= $this->renderPageItemField($pagefile, $id, $n, 'orientation');
+      $outAdditional .= $this->renderLinkItemField($pagefile, $id, $n, 'link');
     }
 
     $splitOut = preg_split("/[\t]+/", $out);
@@ -865,14 +865,15 @@ class ImageExtra extends WireData implements Module, ConfigurableModule {
     return $out;
   }
 
-  protected function renderPageItemField(Pagefile $pagefile, $id, $n, $current) {
+  protected function renderLinkItemField(Pagefile $pagefile, $id, $n, $current) {
+    $fieldName = $current . '_' . $id;
     $field = $this->modules->get('InputfieldPageListSelect');
-    $field->setAttribute('name+id', $current);
+    $field->setAttribute('name+id', $fieldName);
     $field->startLabel = $this->_('Choose Page Link');
     // @todo: add value
     // $field->attr('value', (int) $this->parent_id);
 
-    return "<hr><label>{$field->startLabel}</label>" . $field->render();
+    return "<hr><label for='$fieldName'>{$field->startLabel}</label>" . $field->render();
   }
 
 }
