@@ -105,8 +105,7 @@ class ImageExtra extends WireData implements Module, ConfigurableModule {
    * @param Template $template Template object holding the form's fields.
    *
    */
-  public function init() {
-  }
+  public function init() {}
 
   /**
    * Initialize the module
@@ -183,41 +182,31 @@ class ImageExtra extends WireData implements Module, ConfigurableModule {
   private function addCustomMethod(HookEvent $event, $current) {
     $language = $event->arguments(0);
     $value = $event->arguments(1);
-    $pagefile = $event->object;
 
     if (!is_null($value)) {
       return ($language === true) ? $this->setExtra($current, $value, null, $event->object) : $this->setExtra($current, $value, $language, $event->object);
     }
 
     if ((is_string($language) || is_int($language)) && $this->wire('languages')) {
-      // convert named or ID'd languages to Language object
       $language = $this->wire('languages')->get($language);
     }
 
     if (is_null($language)) {
-      // return description for current user language, or inherit from default if not available
+      // return for current user language, or inherit from default if not available
       $user = $this->wire('user');
       $value = null;
-      // if ($user->language && $user->language->id) $value = parent::get($current . $user->language);
-      // if ($user->language && $user->language->id) $value = $pagefile->get($current . $user->language);
       if ($user->language && $user->language->id) $value = $event->object->get($current . $user->language);
       if (empty($value)) {
         // inherit default language value
-        // $value = parent::get($current);
-        // $value = $pagefile->get($current);
         $value = $event->object->get($current);
       }
     } else if ($language === true) {
       // return JSON string of all languages if applicable
       $languages = $this->wire('languages');
       if ($languages && $languages->count() > 1) {
-        // $values = array(0 => parent::get($current));
-        // $values = array(0 => $pagefile->get($current));
         $values = array(0 => $event->object->get($current));
         foreach ($languages as $lang) {
           if ($lang->isDefault()) continue;
-          // $v = parent::get($current . $lang);
-          // $v = $pagefile->get($current . $lang);
           $v = $event->object->get($current . $lang);
           if (empty($v)) continue;
           $values[$lang->id] = $v;
@@ -226,18 +215,12 @@ class ImageExtra extends WireData implements Module, ConfigurableModule {
         $value = json_encode($values, $flags);
       } else {
         // no languages present so just return string with description
-        // $value = parent::get($current);
-        // $value = $pagefile->get($current);
         $value = $event->object->get($current);
       }
 
     } else if (is_object($language) && $language->id) {
-      // return description for specific language or blank if not available
-      // if ($language->isDefault()) $value = parent::get($current);
-      // if ($language->isDefault()) $value = $pagefile->get($current);
+      // return for specific language or blank if not available
       if ($language->isDefault()) $value = $event->object->get($current);
-        // else $value = parent::get($current . $language);
-        // else $value = $pagefile->get($current . $language);
         else $value = $event->object->get($current . $language);
     }
 
@@ -248,34 +231,19 @@ class ImageExtra extends WireData implements Module, ConfigurableModule {
   }
 
 
-	/**
-	 * Set the parent of this Inputfield
-	 *
-	 * @param InputfieldWrapper $parent
-	 * @return $this
-	 *
-	 */
-	public function setParent(InputfieldWrapper $parent) {
-		$this->parent = $parent;
-		return $this;
-	}
-
-
-	/**
-	 * Set a description, optionally parsing JSON language-specific descriptions to separate properties
-	 *
-	 * @param string $name
-	 * @param string $value
-	 * @param Page|Language Langage to set it for. Omit to determine automatically.
-	 * @return this
-	 *
-	 */
-	protected function setExtra($name, $value, Page $language = null, $pagefile) {
+  /**
+   * Set a description, optionally parsing JSON language-specific descriptions to separate properties
+   *
+   * @param string $name
+   * @param string $value
+   * @param Page|Language Langage to set it for. Omit to determine automatically.
+   * @return this
+   *
+   */
+  protected function setExtra($name, $value, Page $language = null, $pagefile) {
     if (!is_null($language) && $language->id) {
       if (!$language->isDefault()) $name .= $language->id;
       $value = $this->wire('sanitizer')->textarea($value);
-      // @todo: pah. this does not work
-      // parent::set($name, $this->wire('sanitizer')->textarea($value));
       $pagefile->set($name, $this->wire('sanitizer')->textarea($value));
       return $this;
     }
@@ -297,7 +265,6 @@ class ImageExtra extends WireData implements Module, ConfigurableModule {
         $item = $n > 0 ? $name . $id : $name;
         $value = $this->wire('sanitizer')->textarea($v);
         $pagefile->set($item, $value);
-        // parent::set($item, $value);
         $n++;
       }
     } else {
@@ -306,11 +273,9 @@ class ImageExtra extends WireData implements Module, ConfigurableModule {
       $language = $this->wire('user')->language;
       $value = $this->wire('sanitizer')->textarea($value);
 
-      if($languages && $language && !$language->isDefault()) {
-        // parent::set($name . $language, $value);
+      if ($languages && $language && !$language->isDefault()) {
         $pagefile->set($name . $language, $value);
       } else {
-        // parent::set($name, $value);
         $pagefile->set($name, $value);
       }
     }
@@ -398,8 +363,6 @@ class ImageExtra extends WireData implements Module, ConfigurableModule {
   }
 
   public function sleepExtraValue(HookEvent $event) {
-    // no image upload? the reason could be here
-    $page = $event->arguments(0);
     $field = $event->arguments(1);
     $value = $event->arguments(2);
     $table = $this->db->escapeTable($field->table);
@@ -433,7 +396,6 @@ class ImageExtra extends WireData implements Module, ConfigurableModule {
   }
 
   public function wakeupExtraValue(HookEvent $event) {
-    $page = $event->arguments(0);
     $field = $event->arguments(1);
     $value = $event->arguments(2);
 
@@ -475,13 +437,11 @@ class ImageExtra extends WireData implements Module, ConfigurableModule {
   }
 
   public function fileAddedExtra(HookEvent $event) {
-    // @todo: substitute images
-    $inputfield = $event->object;
-
-    $p = $inputfield->value['page'];
+    $p = $event->object->value['page'];
     $image = $event->argumentsByName("pagefile");
     // @todo: add foreach additionalfields
     $image->set('caption', '');
+    // @todo: substitute images
     $p->save('images');
   }
 
