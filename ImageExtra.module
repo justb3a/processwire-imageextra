@@ -55,6 +55,12 @@ class ImageExtra extends WireData implements Module, ConfigurableModule {
     'selectedInputfields' => 'InputfieldImage'
   );
 
+  protected $additionalFields = array(
+    'other' => array(),
+    'orientation' => array(),
+    'link' => array()
+  );
+
   /**
    * Retrieves the list of config input fields
    *
@@ -89,8 +95,6 @@ class ImageExtra extends WireData implements Module, ConfigurableModule {
 
     return $fields;
   }
-
-  protected $additionalFields = array();
 
   /**
    * Initialize the module
@@ -128,6 +132,7 @@ class ImageExtra extends WireData implements Module, ConfigurableModule {
     if (wire('page')->template->name === 'admin' && !empty($this->input->get->id) || wire('page')->template->name != 'admin') {
       $this->addCustomMethods();
 
+      // @todo: check if this empty check is enough // pagetree is not allow to disappear
       if (wire('page')->name === 'field' || !empty($this->additionalFields)) {
         $this->addHookAfter('InputfieldFile::processInputFile', $this, 'processInputFileExtra');
         $this->addHookAfter('InputfieldFile::processInputAddFile', $this, 'processInputAddFileExtra');
@@ -139,6 +144,26 @@ class ImageExtra extends WireData implements Module, ConfigurableModule {
     }
   }
 
+  /**
+   * Merge a multidimensional array
+   *
+   * @param array $array
+   * @return array
+   *
+   */
+  private function array_multi_merge($array) {
+    $new = array();
+    foreach ($array as $items) {
+      foreach ($items as $item)
+        $new[$item] = $item;
+    }
+    return $new;
+  }
+
+  /**
+   * Add a custom function for each custom field
+   *
+   */
   public function addCustomMethods() {
     $fieldNames = array();
     if (wire('page')->template->name != 'admin') {
@@ -170,23 +195,43 @@ class ImageExtra extends WireData implements Module, ConfigurableModule {
         }
       }
 
-      foreach ($this->array_multi_merge($this->additionalFields) as $current) {
-        $this->addHookProperty('Pageimage::' . $current, function($event) { });
+      // add property and method for other fields
+      foreach ($this->array_multi_merge($this->additionalFields['other']) as $current) {
+        $this->addHookProperty('Pageimage::' . $current, function($event) {});
         $this->addHook('Pageimage::' . $current, function($event) {
           $event->return = $this->addCustomMethod($event, $event->method);
         });
       }
+
+      // add property and method for orientation
+      $this->addHookProperty('Pageimage::orientation', function($event) {});
+      $this->addHook('Pageimage::orientation', function($event) {
+        $event->return = $this->addOrientation($event);
+      });
     }
   }
 
-  private function array_multi_merge($array) {
-    $new = array();
-    foreach ($array as $items) {
-      foreach ($items as $item)
-        $new[$item] = $item;
+  /**
+   * Add orientation method
+   *
+   * @param HookEvent $event
+   * @return string
+   *
+   */
+  private function addOrientation(HookEvent $event) {
+    $value = $event->arguments(0);
+
+    if (!is_null($value)) {
+      $value = $this->wire('sanitizer')->textarea($value);
+      $event->object->set('orientation', $value);
     }
-    return $new;
+
+    // we only return strings, so return blank rather than null
+    if (is_null($value)) $value = '';
+
+    return $value;
   }
+
 
   private function addCustomMethod(HookEvent $event, $current) {
     $language = $event->arguments(0);
@@ -311,9 +356,18 @@ class ImageExtra extends WireData implements Module, ConfigurableModule {
       $query = new DatabaseQuerySelect();
       $tmpAddFields = array();
       $count = 0;
-      foreach ($this->additionalFields[$field->name] as $add) {
+
+      // add all other fields to select query
+      foreach ($this->additionalFields['other'][$field->name] as $add) {
         $query->select("field_{$field->name}.$add AS `" . $field->name . "__$add`");
         $tmpAddFields[] = $add;
+        $count++;
+      }
+
+      // add orientation field to select query
+      if (!empty($this->additionalFields['orientation'][$field->name])) {
+        $query->select("field_{$field->name}.orientation AS `" . $field->name . "__orientation`");
+        $tmpAddFields[] = 'orientation';
         $count++;
       }
 
@@ -367,19 +421,28 @@ class ImageExtra extends WireData implements Module, ConfigurableModule {
     $field = $event->arguments(1);
     $value = $event->arguments(2);
 
-    $tmp = array();
+    $tmp = array(
+      'other' => array(),
+      'orientation' => array()
+    );
     foreach ($value as $pagefile) {
-      foreach ($this->additionalFields[$field->name] as $add) {
+      // check other fields
+      foreach ($this->additionalFields['other'][$field->name] as $add) {
         if (!is_null($pagefile->$add)) {
-          $tmp[][$add] = $pagefile->$add(true);
+          $tmp['other'][][$add] = $pagefile->$add(true);
         }
+      }
+
+      // check orientation field
+      if (!empty($this->additionalFields['orientation'][$field->name])) {
+        $tmp['orientation'][]['orientation'] = $pagefile->orientation;
       }
     }
 
     if (!empty($tmp)) {
       $sleepValue = array();
       foreach ($event->return as $key => $e) {
-        $sleepValue[] = $e + $tmp[$key];
+        $sleepValue[] = $e + $tmp['other'][$key] + $tmp['orientation'][$key];
       }
 
       $event->return = $sleepValue;
@@ -391,14 +454,6 @@ class ImageExtra extends WireData implements Module, ConfigurableModule {
     $field = $event->arguments(1);
     $value = $event->arguments(2);
 
-    $table = $this->db->escapeTable($field->table);
-
-    $chkcol = $this->db->query("SHOW COLUMNS FROM `$table`");
-    $columns = array();
-    while ($row = mysqli_fetch_assoc($chkcol)) {
-      $columns[] = $row['Field'];
-    }
-
     if (!is_array($value) || array_key_exists('data', $value)) $value = array($value);
 
     $pagefiles = array();
@@ -408,10 +463,16 @@ class ImageExtra extends WireData implements Module, ConfigurableModule {
 
     foreach ($value as $key => $v) {
       if (empty($v['data'])) continue;
-
-      foreach ($this->additionalFields[$field->name] as $add) {
         $pagefile = $pagefiles[$key];
+
+      // check other fields
+      foreach ($this->additionalFields['other'][$field->name] as $add) {
         $pagefile->$add(true, $v[$add]);
+      }
+
+      // check orientation field
+      if (!empty($this->additionalFields['orientation'][$field->name]) && !empty($v['orientation'])) {
+        $pagefile->orientation($v['orientation']);
       }
     }
   }
@@ -420,10 +481,15 @@ class ImageExtra extends WireData implements Module, ConfigurableModule {
     $filename = $event->arguments(0);
     $value = $event->object->attributes['value'];
     $total = count($value);
+    $name = $event->object->name;
 
     $item = $value->last();
-    foreach ($this->additionalFields[$event->object->name] as $add) {
+    foreach ($this->additionalFields['other'][$name] as $add) {
       $item->set($add, '');
+    }
+
+    if (!empty($this->additionalFields['orientation'][$name])) {
+      $item->set('orientation', '');
     }
   }
 
@@ -432,8 +498,12 @@ class ImageExtra extends WireData implements Module, ConfigurableModule {
     $image = $event->argumentsByName("pagefile");
     $name = $event->object->name;
 
-    foreach ($this->additionalFields[$name] as $add) {
+    foreach ($this->additionalFields['other'][$name] as $add) {
       $image->set($add, '');
+    }
+
+    if (!empty($this->additionalFields['orientation'][$name])) {
+      $image->set('orientation', '');
     }
 
     $p->save($name);
@@ -449,7 +519,7 @@ class ImageExtra extends WireData implements Module, ConfigurableModule {
     $changed = false;
     $languages = $this->noLang ? null : $this->wire('languages');
 
-    foreach ($this->additionalFields[$name] as $key) {
+    foreach ($this->additionalFields['other'][$name] as $key) {
       if (isset($input[$key . '_' . $id])) {
         $value = trim($input[$key . '_' . $id]);
         if ($value != $pagefile->$key) {
@@ -459,9 +529,20 @@ class ImageExtra extends WireData implements Module, ConfigurableModule {
       }
     }
 
+    // orientation field
+    if (!empty($this->additionalFields['orientation'][$name])) {
+      if (isset($input['orientation_' . $id])) {
+        $value = trim($input['orientation_' . $id]);
+        if ($value != $pagefile->orientation()) {
+          $pagefile->orientation = $value;
+          $changed = true;
+        }
+      }
+    }
+
     // multi-language additional fields
     if ($languages) foreach($languages as $language) {
-      foreach ($this->additionalFields[$name] as $add) {
+      foreach ($this->additionalFields['other'][$name] as $add) {
         $key = $language->isDefault() ? $add . '_' . $id : "$add{$language->id}_$id";
         if (!isset($input[$key])) continue;
         $value = trim($input[$key]);
@@ -575,22 +656,41 @@ class ImageExtra extends WireData implements Module, ConfigurableModule {
   }
 
   private function getAdditionalInputFields($data, $name) {
-    if (isset($data['captionField'])) {
-      if ($data['captionField'] > 0) {
-        $this->additionalFields[$name]['caption'] = 'caption';
+    // create basic array structure
+    foreach (array('other', 'orientation', 'link') as $item) {
+      if (!isset($this->additionalFields[$item][$name])) {
+        $this->additionalFields[$item][$name] = ($item === 'other') ? array() : '';
       }
     }
 
+    // check caption field
+    if (isset($data['captionField'])) {
+      if ($data['captionField'] > 0) {
+        $this->additionalFields['other'][$name]['caption'] = 'caption';
+      }
+    }
+
+    // check other fields
     if (isset($data['otherField'])) {
       if (!empty($data['otherField'])) {
         $others = preg_replace('/\s+/', '', $data['otherField']);
         $others = str_replace(';', ',', $others);
 
         foreach (explode(',', $others) as $other) {
-          $this->additionalFields[$name][$other] = $other;
+          $this->additionalFields['other'][$name][$other] = $other;
         }
       }
     }
+
+    // check orientation and get values
+    if (isset($data['orientationField']) && (int)$data['orientationField'] === 1) {
+      if (isset($data['orientationValues']) && !empty($data['orientationValues'])) {
+        $this->additionalFields['orientation'][$name] = $data['orientationValues'];
+      } else {
+        $this->additionalFields['orientation'][$name] = self::$defaults['orientationValues'];
+      }
+    }
+
   }
 
   public function renderExtraFields(HookEvent $event) {
@@ -602,8 +702,8 @@ class ImageExtra extends WireData implements Module, ConfigurableModule {
 
     $data = $this->mergeData($event->object->name);
 
-    if (!empty($this->additionalFields)) {
-      foreach ($this->additionalFields[$event->object->name] as $field) {
+    if (!empty($this->additionalFields['other'])) {
+      foreach ($this->additionalFields['other'][$event->object->name] as $field) {
         $outAdditional .= $this->renderInputItemField($pagefile, $id, $n, $field);
       }
     }
@@ -752,16 +852,14 @@ class ImageExtra extends WireData implements Module, ConfigurableModule {
 
     $options = '';
     foreach (explode(',', preg_replace('/\s+/', '', $data['orientationValues'])) as $option) {
-      // @todo: get and mark selected
-      // $selected = $params['name'] === $val ? 'selected' : '';
-      $selected = '';
+      $selected = ($pagefile->orientation === $option) ? 'selected' : '';
       $options .= "<option value='$option' $selected>$option</option>";
     }
 
     $out = "<hr>" .
       "<div class='InputfieldContent'>" .
       "<label for='$fieldName'>" . ucfirst($current) . "</label>" .
-      "<select name='select_$fieldName' size='1'>" . $options . "</select>" .
+      "<select name='$fieldName' size='1'>" . $options . "</select>" .
       "</div>";
 
     return $out;
