@@ -208,6 +208,12 @@ class ImageExtra extends WireData implements Module, ConfigurableModule {
       $this->addHook('Pageimage::orientation', function($event) {
         $event->return = $this->addOrientation($event);
       });
+
+      // add property and method for link
+      $this->addHookProperty('Pageimage::link', function($event) {});
+      $this->addHook('Pageimage::link', function($event) {
+        $event->return = $this->addLink($event);
+      });
     }
   }
 
@@ -227,11 +233,28 @@ class ImageExtra extends WireData implements Module, ConfigurableModule {
     }
 
     // we only return strings, so return blank rather than null
-    if (is_null($value)) $value = '';
-
-    return $value;
+    return (is_null($value)) ? '' : $value;
   }
 
+
+  /**
+   * Add link method
+   *
+   * @param HookEvent $event
+   * @return string
+   *
+   */
+  private function addLink(HookEvent $event) {
+    $value = $event->arguments(0);
+
+    if (!is_null($value)) {
+      $value = $this->wire('sanitizer')->text($value);
+      $event->object->set('link', $value);
+    }
+
+    // we only return strings, so return blank rather than null
+    return (is_null($value)) ? '' : $value;
+  }
 
   private function addCustomMethod(HookEvent $event, $current) {
     $language = $event->arguments(0);
@@ -364,11 +387,13 @@ class ImageExtra extends WireData implements Module, ConfigurableModule {
         $count++;
       }
 
-      // add orientation field to select query
-      if (!empty($this->additionalFields['orientation'][$field->name])) {
-        $query->select("field_{$field->name}.orientation AS `" . $field->name . "__orientation`");
-        $tmpAddFields[] = 'orientation';
-        $count++;
+      // add orientation and link field to select query
+      foreach (array('orientation', 'link') as $add) {
+        if (!empty($this->additionalFields[$add][$field->name])) {
+          $query->select("field_{$field->name}.$add AS `" . $field->name . "__$add`");
+          $tmpAddFields[] = $add;
+          $count++;
+        }
       }
 
       if ($count === 0 || empty($tmpAddFields)) return null;
@@ -423,7 +448,8 @@ class ImageExtra extends WireData implements Module, ConfigurableModule {
 
     $tmp = array(
       'other' => array(),
-      'orientation' => array()
+      'orientation' => array(),
+      'link' => array()
     );
     foreach ($value as $pagefile) {
       // check other fields
@@ -433,16 +459,18 @@ class ImageExtra extends WireData implements Module, ConfigurableModule {
         }
       }
 
-      // check orientation field
-      if (!empty($this->additionalFields['orientation'][$field->name])) {
-        $tmp['orientation'][]['orientation'] = $pagefile->orientation;
+      // check orientation and link field
+      foreach (array('orientation', 'link') as $add) {
+        if (!empty($this->additionalFields[$add][$field->name])) {
+          $tmp[$add][][$add] = $pagefile->$add;
+        }
       }
     }
 
     if (!empty($tmp)) {
       $sleepValue = array();
       foreach ($event->return as $key => $e) {
-        $sleepValue[] = $e + $tmp['other'][$key] + $tmp['orientation'][$key];
+        $sleepValue[] = $e + $tmp['other'][$key] + $tmp['orientation'][$key] + $tmp['link'][$key];
       }
 
       $event->return = $sleepValue;
@@ -470,9 +498,11 @@ class ImageExtra extends WireData implements Module, ConfigurableModule {
         $pagefile->$add(true, $v[$add]);
       }
 
-      // check orientation field
-      if (!empty($this->additionalFields['orientation'][$field->name]) && !empty($v['orientation'])) {
-        $pagefile->orientation($v['orientation']);
+      // check orientation and link field
+      foreach (array('orientation', 'link') as $add) {
+        if (!empty($this->additionalFields[$add][$field->name]) && !empty($v[$add])) {
+          $pagefile->$add($v[$add]);
+        }
       }
     }
   }
@@ -491,6 +521,10 @@ class ImageExtra extends WireData implements Module, ConfigurableModule {
     if (!empty($this->additionalFields['orientation'][$name])) {
       $item->set('orientation', '');
     }
+
+    if (!empty($this->additionalFields['link'][$name])) {
+      $item->set('link', 0);
+    }
   }
 
   public function fileAddedExtra(HookEvent $event) {
@@ -506,6 +540,10 @@ class ImageExtra extends WireData implements Module, ConfigurableModule {
       $image->set('orientation', '');
     }
 
+    if (!empty($this->additionalFields['link'][$name])) {
+      $item->set('link', 0);
+    }
+
     $p->save($name);
   }
 
@@ -519,22 +557,18 @@ class ImageExtra extends WireData implements Module, ConfigurableModule {
     $changed = false;
     $languages = $this->noLang ? null : $this->wire('languages');
 
-    foreach ($this->additionalFields['other'][$name] as $key) {
+    $combine = $this->additionalFields['other'][$name];
+    foreach (array('orientation', 'link') as $add) {
+      if (!empty($this->additionalFields[$add][$name])) {
+        $combine[$add] = $add;
+      }
+    }
+
+    foreach ($combine as $key) {
       if (isset($input[$key . '_' . $id])) {
         $value = trim($input[$key . '_' . $id]);
         if ($value != $pagefile->$key) {
           $pagefile->$key = $value;
-          $changed = true;
-        }
-      }
-    }
-
-    // orientation field
-    if (!empty($this->additionalFields['orientation'][$name])) {
-      if (isset($input['orientation_' . $id])) {
-        $value = trim($input['orientation_' . $id]);
-        if ($value != $pagefile->orientation()) {
-          $pagefile->orientation = $value;
           $changed = true;
         }
       }
@@ -691,6 +725,9 @@ class ImageExtra extends WireData implements Module, ConfigurableModule {
       }
     }
 
+    // check link (boolean)
+    $if = isset($data['linkField']) && (int)$data['linkField'] === 1;
+    $this->additionalFields['link'][$name] = $if ? true : false;
   }
 
   public function renderExtraFields(HookEvent $event) {
@@ -870,10 +907,10 @@ class ImageExtra extends WireData implements Module, ConfigurableModule {
     $field = $this->modules->get('InputfieldPageListSelect');
     $field->setAttribute('name+id', $fieldName);
     $field->startLabel = $this->_('Choose Page Link');
-    // @todo: add value
-    // $field->attr('value', (int) $this->parent_id);
+    $field->columnWidth = 50;
+    $field->attr('value', (int)$pagefile->link);
 
-    return "<hr><label for='$fieldName'>{$field->startLabel}</label>" . $field->render();
+    return "<hr><div class='InputfieldContent'><label for='$fieldName'>{$field->startLabel}</label>" . $field->render() . "</div>";
   }
 
 }
