@@ -84,7 +84,7 @@ class ImageExtra extends WireData implements Module, ConfigurableModule {
     $field->attr('value', $data['selectedInputfields']);
     $field->description = $this->_('Select the inputfields where the extra fields should be attached.');
     $field->addOption('', '');
-    $field->label = 'Select Image Inputfields';
+    $field->label = $this->_('Select Image Inputfields');
     $field->attr('name', 'selectedInputfields');
     $field->required = true;
 
@@ -122,7 +122,6 @@ class ImageExtra extends WireData implements Module, ConfigurableModule {
     if (wire('page')->template->name === 'admin' && !empty($this->input->get->id) || wire('page')->template->name != 'admin') {
       $this->addCustomMethods();
 
-      // @todo: check if this empty check is enough // pagetree is not allow to disappear
       if (wire('page')->name === 'field' || !empty($this->additionalFields)) {
         $this->addHookAfter('InputfieldFile::processInputFile', $this, 'processInputFileExtra');
         $this->addHookAfter('InputfieldFile::processInputAddFile', $this, 'processInputAddFileExtra');
@@ -689,8 +688,8 @@ class ImageExtra extends WireData implements Module, ConfigurableModule {
     return array(
       'captionField' => array(
         'type' => 'InputfieldCheckbox',
-        'label' => 'Add caption field?',
-        'description' => 'Enable Caption Input Field' . PHP_EOL . '(activate the checkbox to enable field `caption`)',
+        'label' => $this->_('Add caption field?'),
+        'description' => $this->_('Enable Caption Input Field' . PHP_EOL . '(activate the checkbox to enable field `caption`)'),
         'checked' => empty($data['captionField']) ? '' : 'checked',
         'columnWidth' => 50
       ),
