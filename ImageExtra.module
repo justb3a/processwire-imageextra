@@ -695,35 +695,35 @@ class ImageExtra extends WireData implements Module, ConfigurableModule {
       ),
       'orientationField' => array(
         'type' => 'InputfieldCheckbox',
-        'label' => 'Add orientation field?',
-        'description' => 'Enable Image Orientation Select Field' . PHP_EOL . '(activate the checkbox to enable field `orientation`)',
+        'label' => $this->_('Add orientation field?'),
+        'description' => $this->_('Enable Image Orientation Select Field' . PHP_EOL . '(activate the checkbox to enable field `orientation`)'),
         'checked' => empty($data['orientationField']) ? '' : 'checked',
         'columnWidth' => 50,
-        'notes' => 'You can set up orientation values after saving.'
+        'notes' => $this->_('You can set up orientation values after saving.')
       ),
       'orientationValues' => array(
         'type' => 'InputfieldText',
-        'label' => 'Enter image orientation values',
-        'description' => 'Values for Image Orientation Select Field' . PHP_EOL . '(comma-separated list)',
+        'label' => $this->_('Enter image orientation values'),
+        'description' => $this->_('Values for Image Orientation Select Field' . PHP_EOL . '(comma-separated list)'),
         'value' => $data['orientationValues'],
         'size' => 45,
         'columnWidth' => 25
       ),
       'linkField' => array(
         'type' => 'InputfieldCheckbox',
-        'label' => 'Add internal link field?',
-        'description' => 'Enable Choose-Link Field' . PHP_EOL . '(activate the checkbox to enable field `link`)',
+        'label' => $this->_('Add internal link field?'),
+        'description' => $this->_('Enable Choose-Link Field' . PHP_EOL . '(activate the checkbox to enable field `link`)'),
         'checked' => empty($data['linkField']) ? '' : 'checked',
         'columnWidth' => 50
       ),
       'otherField' => array(
         'type' => 'InputfieldText',
-        'label' => 'Add other text input fields?',
-        'description' => 'Add other fields as simple inputs' . PHP_EOL . '(comma-separated list)',
+        'label' => $this->_('Add other text input fields?'),
+        'description' => $this->_('Add other fields as simple inputs' . PHP_EOL . '(comma-separated list)'),
         'value' => $data['otherField'],
         'size' => 80,
         'columnWidth' => 50,
-        'notes' => 'Do not use `orientation`, `link` or `caption` in this list.'
+        'notes' => $this->_('Do not use `orientation`, `link` or `caption` in this list.')
       ),
     );
   }
