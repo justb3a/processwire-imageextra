@@ -458,20 +458,24 @@ class ImageExtra extends WireData implements Module, ConfigurableModule {
       'orientation' => array(),
       'link' => array()
     );
+
+    $loop = 0;
     foreach ($value as $pagefile) {
       // check other fields
-      foreach ($this->additionalFields['other'][$field->name] as $add) {
+      foreach ($this->additionalFields['other'][$field->name] as $key => $add) {
         if (!is_null($pagefile->$add)) {
-          $tmp['other'][][$add] = $pagefile->$add(true);
+          $tmp['other'][$loop][$add] = $pagefile->$add(true);
         }
       }
 
       // check orientation and link field
       foreach (array('orientation', 'link') as $add) {
         if (!empty($this->additionalFields[$add][$field->name])) {
-          $tmp[$add][][$add] = $pagefile->$add;
+          $tmp[$add][$loop][$add] = $pagefile->$add;
         }
       }
+
+      $loop++;
     }
 
     if (!empty($tmp)) {
