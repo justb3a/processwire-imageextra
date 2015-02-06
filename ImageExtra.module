@@ -132,7 +132,7 @@ class ImageExtra extends WireData implements Module, ConfigurableModule {
 
         if (wire('page')->name === 'field' || !empty($this->additionalFields)) {
           $this->addHookAfter('InputfieldFile::processInputFile', $this, 'processInputFileExtra');
-          $this->addHookAfter('InputfieldFile::processInputAddFile', $this, 'processInputAddFileExtra');
+          $this->addHookBefore('InputfieldFile::processInputAddFile', $this, 'processInputAddFileExtra');
           $this->addHookBefore('InputfieldFile::fileAdded', $this, 'fileAddedExtra');
           $this->addHookAfter('Fieldtype::loadPageField', $this, 'loadPageFieldExtra');
           $this->addHookAfter('FieldtypeFile::sleepValue', $this, 'sleepExtraValue');
@@ -543,20 +543,109 @@ class ImageExtra extends WireData implements Module, ConfigurableModule {
     $filename = $event->arguments(0);
     $value = $event->object->attributes['value'];
     $total = count($value);
+    $maxFiles = $value->field->maxFiles;
+    $overwrite = $value->field->overwrite;
     $name = $event->object->name;
+    $tmp = array();
 
+    if ($maxFiles > 1 && $total >= $maxFiles) return;
+
+    // allow replacement of file if maxFile is 1
+    if ($maxFiles == 1 && $total) {
+      $pagefile = $value->first();
+      $tmp['description'] = $pagefile->description;
+      $tmp['tags'] = $pagefile->tags;
+
+      foreach ($this->additionalFields['other'][$name] as $add) {
+        $tmp[$add] = $pagefile->$add;
+      }
+
+      if (!empty($this->additionalFields['orientation'][$name])) {
+        $tmp['orientation'] = $pagefile->orientation;
+      }
+
+      if (!empty($this->additionalFields['link'][$name])) {
+        $tmp['link'] = $pagefile->link;
+      }
+
+      $rm = true;
+      if ($filename == $pagefile->basename) {
+        // use overwrite mode rather than replace mode when single file and same filename
+        if ($overwrite) $rm = false;
+      }
+      if ($rm) {
+        $event->object->processInputDeleteFile($pagefile);
+        $singleFileReplacement = true;
+      }
+    }
+
+    if ($overwrite) {
+      $pagefile = $value->get($filename);
+      clearstatcache();
+
+      if ($pagefile) {
+        if ($pagefile instanceof Pageimage) $pagefile->removeVariations();
+        $tmp['description'] = $pagefile->description;
+        $tmp['tags'] = $pagefile->tags;
+        foreach ($this->additionalFields['other'][$name] as $add) {
+          $tmp[$add] = $pagefile->$add;
+        }
+
+        if (!empty($this->additionalFields['orientation'][$name])) {
+          $tmp['orientation'] = $pagefile->orientation;
+        }
+
+        if (!empty($this->additionalFields['link'][$name])) {
+          $tmp['link'] = $pagefile->link;
+        }
+      } else {
+        // we don't have a file with the same name as the one that was uploaded
+        // file must be in another files field on the same page, that could be problematic
+        $ul = $event->object->getWireUpload();
+        // see if any files were overwritten that weren't part of our field
+        // if so, we need to restore them and issue an error
+        $err = false;
+        foreach ($ul->getOverwrittenFiles() as $bakFile => $newFile) {
+          if (basename($newFile) != $filename) continue;
+          unlink($newFile);
+          rename($bakFile, $newFile); // restore
+          $ul->error(sprintf($this->_('Refused file %s because it is already on the file system and owned by a different field.'), $filename));
+          $err = true;
+        }
+        if ($err) return;
+      }
+    }
+
+    $value->add($filename);
     $item = $value->last();
-    foreach ($this->additionalFields['other'][$name] as $add) {
-      $item->set($add, '');
+
+    if (empty($tmp)) {
+      foreach ($this->additionalFields['other'][$name] as $add) {
+        $item->set($add, '');
+      }
+
+      if (!empty($this->additionalFields['orientation'][$name])) {
+        $item->set('orientation', '');
+      }
+
+      if (!empty($this->additionalFields['link'][$name])) {
+        $item->set('link', 0);
+      }
     }
 
-    if (!empty($this->additionalFields['orientation'][$name])) {
-      $item->set('orientation', '');
+    try {
+      foreach ($tmp as $key => $val) {
+        $item->$key = $val;
+      }
+
+      $event->object->fileAdded($item);
+    } catch(Exception $e) {
+      $item->unlink();
+      $value->remove($item);
+      throw new WireException($e->getMessage());
     }
 
-    if (!empty($this->additionalFields['link'][$name])) {
-      $item->set('link', 0);
-    }
+    $event->replace = true;
   }
 
   /**
@@ -570,15 +659,15 @@ class ImageExtra extends WireData implements Module, ConfigurableModule {
     $name = $event->object->name;
 
     foreach ($this->additionalFields['other'][$name] as $add) {
-      $image->set($add, '');
+      $image->set($add, $image->$add);
     }
 
     if (!empty($this->additionalFields['orientation'][$name])) {
-      $image->set('orientation', '');
+      $image->set('orientation', $image->orientation);
     }
 
     if (!empty($this->additionalFields['link'][$name])) {
-      $image->set('link', 0);
+      $image->set('link', $image->link);
     }
 
     $p->save($name);
@@ -972,7 +1061,7 @@ class ImageExtra extends WireData implements Module, ConfigurableModule {
 
   /**
    * render select item field
-   * 
+   *
    * @param Pagefile $pagefile
    * @param string $id
    * @param int $n
@@ -1020,7 +1109,7 @@ class ImageExtra extends WireData implements Module, ConfigurableModule {
    * save default module configurations on install
    */
   public function ___install() {
-    wire('modules')->saveModuleConfigData($this, self::$basics); 
+    wire('modules')->saveModuleConfigData($this, self::$basics);
   }
 
   /**
