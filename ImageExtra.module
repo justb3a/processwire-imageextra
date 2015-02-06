@@ -164,28 +164,10 @@ class ImageExtra extends WireData implements Module, ConfigurableModule {
    */
   public function addCustomMethods() {
     $fieldNames = array();
-    $fieldNameFields = array();
-    $fieldNameRepeaterFields = array();
-
-    if (wire('page')->template->name != 'admin') {
-      $fieldNameFields = wire('page')->template->fields->find('inputfieldClass=' . implode('|', $this->selectedInputfields));
-      $fieldNameRepeater = wire('page')->template->fields->find('type=FieldtypeRepeater');
-      $fieldNameRepeaterFields = $fieldNameRepeater->fields->find('inputfieldClass=' . implode('|', $this->selectedInputfields));
-    } else {
-      if ($this->page->name === 'fields') {
-      } elseif (wire('pages')->get($this->input->get->id)->template) {
-        $fieldNameFields = wire('pages')->get($this->input->get->id)->template->fields->find('inputfieldClass=' . implode('|', $this->selectedInputfields));
-        $fieldNameRepeater = wire('pages')->get($this->input->get->id)->template->fields->find('type=FieldtypeRepeater');
-        $fieldNameRepeaterFields = $fieldNameRepeater->fields->find('inputfieldClass=' . implode('|', $this->selectedInputfields));
-      }
-    }
-
-    if (count($fieldNameFields) || count($fieldNameRepeaterFields)) {
+    $fieldNameFields = wire('fields')->find('inputfieldClass=' . implode('|', $this->selectedInputfields));
+    if (count($fieldNameFields)) {
       foreach ($fieldNameFields as $f) {
-        $fieldNames[] = $f->name;
-      }
-      foreach ($fieldNameRepeaterFields as $f) {
-        $fieldNames[] = $f->name;
+        $fieldNames[$f->name] = $f->name;
       }
     }
 
@@ -278,13 +260,17 @@ class ImageExtra extends WireData implements Module, ConfigurableModule {
     }
 
     if (is_null($language)) {
+
       // return for current user language, or inherit from default if not available
       $user = $this->wire('user');
       $value = null;
-      if ($user->language && $user->language->id) $value = $event->object->get($current . $user->language);
-      if (empty($value)) {
-        // inherit default language value
-        $value = $event->object->get($current);
+      if ($user->language && $user->language->id) {
+        $value = $event->object->get($current . $user->language);
+      } else {
+        if (empty($value)) {
+          // inherit default language value
+          $value = $event->object->get($current);
+        }
       }
     } else if ($language === true) {
       // return JSON string of all languages if applicable
@@ -355,7 +341,7 @@ class ImageExtra extends WireData implements Module, ConfigurableModule {
         if ($n > 0) {
           $pagefile->set($item, $value);
         } else {
-          $this->setExtra($item, $value, null, $pagefile);
+          $this->setExtra($name, $value, null, $pagefile);
         }
         $n++;
       }
