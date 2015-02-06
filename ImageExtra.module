@@ -122,7 +122,7 @@ class ImageExtra extends WireData implements Module, ConfigurableModule {
     $admin = $this->config->urls->admin;
     $backend = strpos($this->page->url, $admin);
 
-    if (in_array($this->page->name, array('edit', 'field', 'module')) || $backend === false) {
+  if (in_array($this->page->name, array('edit', 'field', 'module', 'users')) || $backend === false) {
       $this->addHookAfter('InputfieldImage::getConfigInputfields', $this, 'addExtraFields');
       $this->addHookAfter('InputfieldImage::renderItem', $this, 'renderExtraFields');
       $this->addHookBefore('ProcessField::executeSave', $this, 'checkTableColumns');
@@ -683,14 +683,17 @@ class ImageExtra extends WireData implements Module, ConfigurableModule {
     $input = $event->arguments(0);
     $pagefile = $event->arguments(1);
     $n = $event->arguments(2);
-    $name = $event->object->name;
-    $id = $name . '_' . $pagefile->hash;
     $changed = false;
     $languages = $this->noLang ? null : $this->wire('languages');
+    $name = $event->object->name;
+    $id = $name . '_' . $pagefile->hash;
 
-    $combine = $this->additionalFields['other'][$name];
+    $value = $event->object->attributes['value'];
+    $fieldName = $value->field->name;
+
+    $combine = $this->additionalFields['other'][$fieldName];
     foreach (array('orientation', 'link') as $add) {
-      if (!empty($this->additionalFields[$add][$name])) {
+      if (!empty($this->additionalFields[$add][$fieldName])) {
         $combine[$add] = $add;
       }
     }
@@ -707,7 +710,7 @@ class ImageExtra extends WireData implements Module, ConfigurableModule {
 
     // multi-language additional fields
     if ($languages) foreach($languages as $language) {
-      foreach ($this->additionalFields['other'][$name] as $add) {
+      foreach ($this->additionalFields['other'][$fieldName] as $add) {
         $key = $language->isDefault() ? $add . '_' . $id : "$add{$language->id}_$id";
         if (!isset($input[$key])) continue;
         $value = trim($input[$key]);
@@ -890,13 +893,15 @@ class ImageExtra extends WireData implements Module, ConfigurableModule {
     $id = $event->arguments[1];
     $n = $event->arguments[2];
     $out = $event->return;
+    $value = $event->object->attributes['value'];
+    $name = $value->field->name;
     $outAdditional = '';
 
     if (in_array($event->object->className, $this->selectedInputfields)) {
-      $data = $this->mergeData($event->object->name);
+      $data = $this->mergeData($name);
 
       if (!empty($this->additionalFields['other'])) {
-        foreach ($this->additionalFields['other'][$event->object->name] as $field) {
+        foreach ($this->additionalFields['other'][$name] as $field) {
           $outAdditional .= $this->renderInputItemField($pagefile, $id, $n, $field);
         }
       }
@@ -912,20 +917,21 @@ class ImageExtra extends WireData implements Module, ConfigurableModule {
       $splitOut = preg_split("/[\t]+/", $out);
       $position = count($splitOut) - 2;
 
-      // add label for description field
-      $replaceLabel = "<label for='description_{$event->object->name}_{$id}' class='detail'>Description</label>";
-      if ($position > 0) {
-        $splitOut[$position - 1] = preg_replace('/<label\b[^>]*>(.*?)<\/label>/', $replaceLabel, $splitOut[$position - 1]);
-        $splitOut[$position - 1] = str_replace('InputfieldFileDescription', 'InputfieldFileDescription2', $splitOut[$position - 1]);
-        $splitOut[$position - 1] = str_replace('input', 'input class="InputfieldMaxWidth"', $splitOut[$position - 1]);
-      } else {
-        // @todo: for some inputfields like InputfieldCroppableImage the split does not work
-        // (no tabs, no array)
-        // change order and set label for description
+      // replace label class and label for description
+      foreach ($this->languages as $language) {
+        $combinedId = ($language->isDefault()) ? 'description_' . $id : 'description' . $language->id . '_' . $id;
+        $out = preg_replace('/(?<=<label\sfor=\'' . $combinedId . '\'\sclass=\').*?(?=\'[^>]*)/', 'detail', $out);
+        $out = preg_replace('/(?<=<label\sfor=\'' . $combinedId . '\'\sclass=\'detail\'>).*?(?=<)/', $this->_('Description'), $out);
+        $out = preg_replace('/(<input\stype=\'text\'\sname=\'' . $combinedId . '\')/', '$1 class=\'InputfieldMaxWidth\'', $out);
       }
 
-      array_splice($splitOut, $position, 0, $outAdditional);
-      $event->return = implode('', $splitOut);
+      // rename description class to avoid special css style
+      $out = preg_replace('/InputfieldFileDescription/', '$1' . '2', $out);
+
+      // insert additional output
+      $out = preg_replace('/(<input\sclass=\'InputfieldFileSort\')/', $outAdditional . '$1', $out);
+
+      $event->return = $out;
     }
   }
 
