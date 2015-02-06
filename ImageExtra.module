@@ -332,7 +332,7 @@ class ImageExtra extends WireData implements Module, ConfigurableModule {
       if (!$language->isDefault()) $name .= $language->id;
       $value = $this->wire('sanitizer')->textarea($value);
       $pagefile->set($name, $this->wire('sanitizer')->textarea($value));
-      return $this;
+      return $pagefile;
     }
 
     // check if it contains JSON?
@@ -351,7 +351,12 @@ class ImageExtra extends WireData implements Module, ConfigurableModule {
         // work even if language support is later uninstalled.
         $item = $n > 0 ? $name . $id : $name;
         $value = $this->wire('sanitizer')->textarea($v);
-        $pagefile->set($item, $value);
+
+        if ($n > 0) {
+          $pagefile->set($item, $value);
+        } else {
+          $this->setExtra($item, $value, null, $pagefile);
+        }
         $n++;
       }
     } else {
