@@ -164,30 +164,28 @@ class ImageExtra extends WireData implements Module, ConfigurableModule {
    */
   public function addCustomMethods() {
     $fieldNames = array();
+    $fieldNameFields = array();
+    $fieldNameRepeaterFields = array();
+
     if (wire('page')->template->name != 'admin') {
       $fieldNameFields = wire('page')->template->fields->find('inputfieldClass=' . implode('|', $this->selectedInputfields));
-      if (count($fieldNameFields)) {
-
-        foreach ($fieldNameFields as $f) {
-          $fieldNames[] = $f->name;
-        }
-      }
+      $fieldNameRepeater = wire('page')->template->fields->find('type=FieldtypeRepeater');
+      $fieldNameRepeaterFields = $fieldNameRepeater->fields->find('inputfieldClass=' . implode('|', $this->selectedInputfields));
     } else {
       if ($this->page->name === 'fields') {
       } elseif (wire('pages')->get($this->input->get->id)->template) {
         $fieldNameFields = wire('pages')->get($this->input->get->id)->template->fields->find('inputfieldClass=' . implode('|', $this->selectedInputfields));
         $fieldNameRepeater = wire('pages')->get($this->input->get->id)->template->fields->find('type=FieldtypeRepeater');
         $fieldNameRepeaterFields = $fieldNameRepeater->fields->find('inputfieldClass=' . implode('|', $this->selectedInputfields));
+      }
+    }
 
-        if (count($fieldNameFields) || count($fieldNameRepeaterFields)) {
-          foreach ($fieldNameFields as $f) {
-            $fieldNames[] = $f->name;
-          }
-
-          foreach ($fieldNameRepeaterFields as $f) {
-            $fieldNames[] = $f->name;
-          }
-        }
+    if (count($fieldNameFields) || count($fieldNameRepeaterFields)) {
+      foreach ($fieldNameFields as $f) {
+        $fieldNames[] = $f->name;
+      }
+      foreach ($fieldNameRepeaterFields as $f) {
+        $fieldNames[] = $f->name;
       }
     }
 
