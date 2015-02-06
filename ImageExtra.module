@@ -119,7 +119,10 @@ class ImageExtra extends WireData implements Module, ConfigurableModule {
       $this->selectedInputfields = self::$basics;
     }
 
-    if (in_array($this->page->name, array('edit', 'field', 'module'))) {
+    $admin = $this->config->urls->admin;
+    $backend = strpos($this->page->url, $admin);
+
+    if (in_array($this->page->name, array('edit', 'field', 'module')) || $backend === false) {
       $this->addHookAfter('InputfieldImage::getConfigInputfields', $this, 'addExtraFields');
       $this->addHookAfter('InputfieldImage::renderItem', $this, 'renderExtraFields');
       $this->addHookBefore('ProcessField::executeSave', $this, 'checkTableColumns');
