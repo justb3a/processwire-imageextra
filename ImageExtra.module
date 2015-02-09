@@ -1,0 +1,1126 @@
+<?php
+
+/**
+*
+* ImageExtra
+*
+* See README.md for usage instructions.
+*
+* @author Tabea David <td@kf-interactive.com>
+* @version 0.0.1
+* @copyright Copyright (c) 2015
+* @see https://github.com/justonestep/processwire-imageextra
+* @see http://www.processwire.com
+*/
+
+/**
+* Class ImageExtra
+*/
+class ImageExtra extends WireData implements Module, ConfigurableModule {
+
+  /**
+   * Retrieves module meta data
+   * Implementation of the Module interface
+   *
+   * @return array
+   * @see http://processwire.com/apigen/class-Module.html
+   */
+  public static function getModuleInfo() {
+    return array(
+      'title' => 'Image Extra',
+      'summary' => 'Adds custom fields to image fields (including multi-language support)',
+      'version' => 1,
+      'href' => 'https://github.com/justonestep/processwire-imageextra',
+      'singular' => true,
+      'autoload' => true,
+    );
+  }
+
+  /**
+   * @field array default config values for field settings
+   *
+   */
+  protected static $defaults = array(
+    'captionField' => false,
+    'orientationField' => false,
+    'orientationValues' => 'left,right',
+    'linkField' => false,
+    'otherField' => ''
+  );
+
+  /**
+   * @field array basic config values for module settings
+   */
+  protected static $basics = array(
+    'selectedInputfields' => array('InputfieldImage')
+  );
+
+  /**
+   * @field array additional fields
+   */
+  protected $additionalFields = array(
+    'other' => array(),
+    'orientation' => array(),
+    'link' => array()
+  );
+
+  /**
+   * Retrieves the list of config input fields
+   *
+   * Implementation of the ConfigurableModule interface
+   *
+   * @param array $data The config data
+   * @return InputfieldWrapper
+   * @see http://processwire.com/apigen/class-ConfigurableModule.html
+   */
+  public static function getModuleConfigInputfields(array $data) {
+    $fields = new InputfieldWrapper();
+    $modules = wire('modules');
+
+    // default config values
+    $data = array_merge(self::$basics, $data);
+
+    $field = $modules->get('InputfieldAsmSelect');
+    $field->attr('value', $data['selectedInputfields']);
+    $field->description = __('Select the inputfields where the extra fields should be attached.');
+    $field->addOption('', '');
+    $field->label = __('Select Image Inputfields');
+    $field->attr('name', 'selectedInputfields');
+    $field->required = true;
+
+    foreach (wire('modules') as $module) {
+      if (preg_match('/^Inputfield/', $module)) {
+        $field->addOption($module->name, $module->name);
+      }
+    }
+
+    $fields->append($field);
+
+    return $fields;
+  }
+
+  /**
+   * Initialize the module
+   *
+   */
+  public function init() {}
+
+  /**
+   * Initialize the module - ready
+   *
+   * ProcessWire calls this when the module is loaded. For 'autoload' modules, this will be called
+   * when ProcessWire's API is ready. As a result, this is a good place to attach hooks.
+   *
+   * @see http://processwire.com/apigen/class-Module.html
+   *
+   */
+  public function ready() {
+    if (is_null($this->selectedInputfields)) {
+      $this->selectedInputfields = self::$basics;
+    }
+
+    $admin = $this->config->urls->admin;
+    $backend = strpos($this->page->url, $admin);
+
+  if (in_array($this->page->name, array('edit', 'field', 'module', 'users')) || $backend === false) {
+      $this->addHookAfter('InputfieldImage::getConfigInputfields', $this, 'addExtraFields');
+      $this->addHookAfter('InputfieldImage::renderItem', $this, 'renderExtraFields');
+      $this->addHookBefore('ProcessField::executeSave', $this, 'checkTableColumns');
+
+      if (wire('page')->template->name === 'admin' && !empty($this->input->get->id) || wire('page')->template->name != 'admin') {
+        $this->addCustomMethods();
+
+        if (wire('page')->name === 'field' || !empty($this->additionalFields)) {
+          $this->addHookAfter('InputfieldFile::processInputFile', $this, 'processInputFileExtra');
+          $this->addHookBefore('InputfieldFile::processInputAddFile', $this, 'processInputAddFileExtra');
+          $this->addHookBefore('InputfieldFile::fileAdded', $this, 'fileAddedExtra');
+          $this->addHookAfter('Fieldtype::loadPageField', $this, 'loadPageFieldExtra');
+          $this->addHookAfter('FieldtypeFile::sleepValue', $this, 'sleepExtraValue');
+          $this->addHookAfter('FieldtypeFile::wakeupValue', $this, 'wakeupExtraValue');
+        }
+      }
+    }
+  }
+
+  /**
+   * Merge a multidimensional array
+   *
+   * @param array $array
+   * @return array
+   *
+   */
+  private function array_multi_merge($array) {
+    $new = array();
+    foreach ($array as $items) {
+      foreach ($items as $item)
+        $new[$item] = $item;
+    }
+    return $new;
+  }
+
+  /**
+   * Add a custom method for each custom field
+   *
+   */
+  public function addCustomMethods() {
+    $fieldNames = array();
+    $fieldNameFields = wire('fields')->find('inputfieldClass=' . implode('|', $this->selectedInputfields));
+    if (count($fieldNameFields)) {
+      foreach ($fieldNameFields as $f) {
+        $fieldNames[$f->name] = $f->name;
+      }
+    }
+
+    if (!empty($fieldNames)) {
+      foreach ($fieldNames as $fieldName) {
+        $fieldConfig = $this->fields->get($fieldName);
+        if (!empty($fieldConfig)) {
+          $this->getAdditionalInputFields($fieldConfig->data, $fieldName);
+        }
+      }
+
+      // add property and method for other fields
+      foreach ($this->array_multi_merge($this->additionalFields['other']) as $current) {
+        $this->addHookProperty('Pageimage::' . $current, function($event) {});
+        $this->addHook('Pageimage::' . $current, function($event) {
+          $event->return = $this->addCustomMethod($event, $event->method);
+        });
+      }
+
+      // add property and method for orientation
+      $this->addHookProperty('Pageimage::orientation', function($event) {});
+      $this->addHook('Pageimage::orientation', function($event) {
+        $event->return = $this->addOrientation($event);
+      });
+
+      // add property and method for link
+      $this->addHookProperty('Pageimage::link', function($event) {});
+      $this->addHook('Pageimage::link', function($event) {
+        $event->return = $this->addLink($event);
+      });
+    }
+  }
+
+  /**
+   * Add orientation method
+   *
+   * @param HookEvent $event
+   * @return string
+   *
+   */
+  private function addOrientation(HookEvent $event) {
+    $value = $event->arguments(0);
+
+    if (!is_null($value)) {
+      $value = $this->wire('sanitizer')->textarea($value);
+      $event->object->set('orientation', $value);
+    }
+
+    // we only return strings, so return blank rather than null
+    return (is_null($value)) ? '' : $value;
+  }
+
+
+  /**
+   * Add link method
+   *
+   * @param HookEvent $event
+   * @return string
+   *
+   */
+  private function addLink(HookEvent $event) {
+    $value = $event->arguments(0);
+
+    if (!is_null($value)) {
+      $value = $this->wire('sanitizer')->text($value);
+      $event->object->set('link', $value);
+    }
+
+    // we only return strings, so return blank rather than null
+    return (is_null($value)) ? '' : $value;
+  }
+
+  /**
+   * add custom method for custom input fields
+   *
+   * @param HookEvent $event
+   * @param string $current
+   *
+   */
+  private function addCustomMethod(HookEvent $event, $current) {
+    $language = $event->arguments(0);
+    $value = $event->arguments(1);
+
+    if (!is_null($value)) {
+      return ($language === true) ? $this->setExtra($current, $value, null, $event->object) : $this->setExtra($current, $value, $language, $event->object);
+    }
+
+    if ((is_string($language) || is_int($language)) && $this->wire('languages')) {
+      $language = $this->wire('languages')->get($language);
+    }
+
+    if (is_null($language)) {
+
+      // return for current user language, or inherit from default if not available
+      $user = $this->wire('user');
+      $value = null;
+      if ($user->language && $user->language->id) {
+        $value = $event->object->get($current . $user->language);
+      } else {
+        if (empty($value)) {
+          // inherit default language value
+          $value = $event->object->get($current);
+        }
+      }
+    } else if ($language === true) {
+      // return JSON string of all languages if applicable
+      $languages = $this->wire('languages');
+      if ($languages && $languages->count() > 1) {
+        $values = array(0 => $event->object->get($current));
+        foreach ($languages as $lang) {
+          if ($lang->isDefault()) continue;
+          $v = $event->object->get($current . $lang);
+          if (empty($v)) continue;
+          $values[$lang->id] = $v;
+        }
+        $flags = defined("JSON_UNESCAPED_UNICODE") ? JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES : 0; // more fulltext friendly
+        $value = json_encode($values, $flags);
+      } else {
+        // no languages present so just return string with description
+        $value = $event->object->get($current);
+      }
+
+    } else if (is_object($language) && $language->id) {
+      // return for specific language or blank if not available
+      if ($language->isDefault()) $value = $event->object->get($current);
+        else $value = $event->object->get($current . $language);
+    }
+
+    // we only return strings, so return blank rather than null
+    if (is_null($value)) $value = '';
+
+    return $value;
+  }
+
+
+  /**
+   * Sets custom value, optionally parsing JSON language-specific value to separate properties
+   *
+   * @param string $name
+   * @param string $value
+   * @param Page|Language Langage to set it for. Omit to determine automatically.
+   * @param Pagefile $pagefile
+   * @return this
+   *
+   */
+  protected function setExtra($name, $value, Page $language = null, $pagefile) {
+    if (!is_null($language) && $language->id) {
+      if (!$language->isDefault()) $name .= $language->id;
+      $value = $this->wire('sanitizer')->textarea($value);
+      $pagefile->set($name, $this->wire('sanitizer')->textarea($value));
+      return $pagefile;
+    }
+
+    // check if it contains JSON?
+    $first = substr($value, 0, 1);
+    $last = substr($value, -1);
+    if(($first == '{' && $last == '}') || ($first == '[' && $last == ']')) {
+      $values = json_decode($value, true);
+    } else {
+      $values = array();
+    }
+
+    if ($values && count($values)) {
+      $n = 0;
+      foreach ($values as $id => $v) {
+        // first item is always default language. this ensures that this will still
+        // work even if language support is later uninstalled.
+        $item = $n > 0 ? $name . $id : $name;
+        $value = $this->wire('sanitizer')->textarea($v);
+
+        if ($n > 0) {
+          $pagefile->set($item, $value);
+        } else {
+          $this->setExtra($name, $value, null, $pagefile);
+        }
+        $n++;
+      }
+    } else {
+      // no JSON values so assume regular language
+      $languages = $this->wire('languages');
+      $language = $this->wire('user')->language;
+      $value = $this->wire('sanitizer')->textarea($value);
+
+      if ($languages && $language && !$language->isDefault()) {
+        $pagefile->set($name . $language, $value);
+      } else {
+        $pagefile->set($name, $value);
+      }
+    }
+
+    return $pagefile;
+  }
+
+  /**
+   * Hook load page field
+   *
+   * @param HookEvent $event
+   */
+  public function loadPageFieldExtra(HookEvent $event) {
+    $page = $event->arguments(0);
+    $field = $event->arguments(1);
+
+    if (!$page->id || !$field->id) return null;
+    if (is_null($field->inputfieldClass)) return null;
+
+    if (in_array($field->inputfieldClass, $this->selectedInputfields)) {
+      $database = $this->wire('database');
+      $isMulti = $field->type instanceof FieldtypeMulti;
+      $page_id = (int) $page->id;
+
+      $query = new DatabaseQuerySelect();
+      $tmpAddFields = array();
+      $count = 0;
+
+      // add all other fields to select query
+      foreach ($this->additionalFields['other'][$field->name] as $add) {
+        $query->select("field_{$field->name}.$add AS `" . $field->name . "__$add`");
+        $tmpAddFields[] = $add;
+        $count++;
+      }
+
+      // add orientation and link field to select query
+      foreach (array('orientation', 'link') as $add) {
+        if (!empty($this->additionalFields[$add][$field->name])) {
+          $query->select("field_{$field->name}.$add AS `" . $field->name . "__$add`");
+          $tmpAddFields[] = $add;
+          $count++;
+        }
+      }
+
+      if ($count === 0 || empty($tmpAddFields)) return null;
+
+      $table = $database->escapeTable($field->table);
+      $query->where("$table.pages_id='$page_id'");
+      $query->from($table);
+      if ($isMulti) $query->orderby('sort');
+
+      $value = null;
+      $stmt = $query->execute();
+      $result = $stmt->errorCode() > 0 ? false : true;
+
+      $fieldName = $database->escapeCol($field->name);
+
+      if (!$result) return $value;
+
+      $values = array();
+      while($row = $stmt->fetch(PDO::FETCH_ASSOC)) {
+        $value = array();
+        foreach ($tmpAddFields as $add) {
+          $key = $fieldName . '__' . $add;
+          $value[$add] = $row[$key];
+        }
+
+        // if there is just one 'data' field here, then don't bother with the array, just make data the value
+        if (count($value) == 1 && isset($value['data'])) $value = $value['data'];
+
+        if (!$isMulti) break;
+        $values[] = $value;
+      }
+
+      $stmt->closeCursor();
+
+      if ($isMulti && count($values)) $value = $values;
+
+      $return = array();
+      if (!empty($event->return)) {
+
+        foreach ($event->return as $key => $r) {
+          $return[] = $r + $value[$key];
+        }
+
+        $event->return = $return;
+      }
+    }
+  }
+
+  /**
+   * Hook sleep value
+   *
+   * @param HookEvent $event
+   */
+  public function sleepExtraValue(HookEvent $event) {
+    $field = $event->arguments(1);
+    $value = $event->arguments(2);
+
+    $tmp = array(
+      'other' => array(),
+      'orientation' => array(),
+      'link' => array()
+    );
+
+    $loop = 0;
+    foreach ($value as $pagefile) {
+      // check other fields
+      foreach ($this->additionalFields['other'][$field->name] as $key => $add) {
+        if (!is_null($pagefile->$add)) {
+          $tmp['other'][$loop][$add] = $pagefile->$add(true);
+        }
+      }
+
+      // check orientation and link field
+      foreach (array('orientation', 'link') as $add) {
+        if (!empty($this->additionalFields[$add][$field->name])) {
+          $tmp[$add][$loop][$add] = $pagefile->$add;
+        }
+      }
+
+      $loop++;
+    }
+
+    if (!empty($tmp)) {
+      $sleepValue = array();
+      foreach ($event->return as $key => $e) {
+        $other = (array_key_exists($key, $tmp['other'])) ? $tmp['other'][$key] : array();
+        $orientation = (array_key_exists($key, $tmp['orientation'])) ? $tmp['orientation'][$key] : array();
+        $link = (array_key_exists($key, $tmp['link'])) ? $tmp['link'][$key] : array();
+
+        $sleepValue[] = $e + $other + $orientation + $link;
+      }
+
+      $event->return = $sleepValue;
+    }
+
+  }
+
+  /**
+   * Hook wakeup value
+   *
+   * @param HookEvent $event
+   */
+  public function wakeupExtraValue(HookEvent $event) {
+    $field = $event->arguments(1);
+    $value = $event->arguments(2);
+
+    if (in_array($field->inputfieldClass, $this->selectedInputfields)) {
+      if (!is_array($value) || array_key_exists('data', $value)) $value = array($value);
+
+      $pagefiles = array();
+      foreach ($event->return as $pagefile) {
+        $pagefiles[] = $pagefile;
+      }
+
+      foreach ($value as $key => $v) {
+        if (empty($v['data'])) continue;
+          $pagefile = $pagefiles[$key];
+
+        // check other fields
+        foreach ($this->additionalFields['other'][$field->name] as $add) {
+          $pagefile->$add(true, $v[$add]);
+        }
+
+        // check orientation and link field
+        foreach (array('orientation', 'link') as $add) {
+          if (!empty($this->additionalFields[$add][$field->name]) && !empty($v[$add])) {
+            $pagefile->$add($v[$add]);
+          }
+        }
+      }
+    }
+  }
+
+  /**
+   * Hook process input file add
+   *
+   * @param HookEvent $event
+   */
+  public function processInputAddFileExtra(HookEvent $event) {
+    $filename = $event->arguments(0);
+    $value = $event->object->attributes['value'];
+    $total = count($value);
+    $maxFiles = $value->field->maxFiles;
+    $overwrite = $value->field->overwrite;
+    $name = $event->object->name;
+    $tmp = array();
+
+    if ($maxFiles > 1 && $total >= $maxFiles) return;
+
+    // allow replacement of file if maxFile is 1
+    if ($maxFiles == 1 && $total) {
+      $pagefile = $value->first();
+      $tmp['description'] = $pagefile->description;
+      $tmp['tags'] = $pagefile->tags;
+
+      foreach ($this->additionalFields['other'][$name] as $add) {
+        $tmp[$add] = $pagefile->$add;
+      }
+
+      if (!empty($this->additionalFields['orientation'][$name])) {
+        $tmp['orientation'] = $pagefile->orientation;
+      }
+
+      if (!empty($this->additionalFields['link'][$name])) {
+        $tmp['link'] = $pagefile->link;
+      }
+
+      $rm = true;
+      if ($filename == $pagefile->basename) {
+        // use overwrite mode rather than replace mode when single file and same filename
+        if ($overwrite) $rm = false;
+      }
+      if ($rm) {
+        $event->object->processInputDeleteFile($pagefile);
+        $singleFileReplacement = true;
+      }
+    }
+
+    if ($overwrite) {
+      $pagefile = $value->get($filename);
+      clearstatcache();
+
+      if ($pagefile) {
+        if ($pagefile instanceof Pageimage) $pagefile->removeVariations();
+        $tmp['description'] = $pagefile->description;
+        $tmp['tags'] = $pagefile->tags;
+        foreach ($this->additionalFields['other'][$name] as $add) {
+          $tmp[$add] = $pagefile->$add;
+        }
+
+        if (!empty($this->additionalFields['orientation'][$name])) {
+          $tmp['orientation'] = $pagefile->orientation;
+        }
+
+        if (!empty($this->additionalFields['link'][$name])) {
+          $tmp['link'] = $pagefile->link;
+        }
+      } else {
+        // we don't have a file with the same name as the one that was uploaded
+        // file must be in another files field on the same page, that could be problematic
+        $ul = $event->object->getWireUpload();
+        // see if any files were overwritten that weren't part of our field
+        // if so, we need to restore them and issue an error
+        $err = false;
+        foreach ($ul->getOverwrittenFiles() as $bakFile => $newFile) {
+          if (basename($newFile) != $filename) continue;
+          unlink($newFile);
+          rename($bakFile, $newFile); // restore
+          $ul->error(sprintf($this->_('Refused file %s because it is already on the file system and owned by a different field.'), $filename));
+          $err = true;
+        }
+        if ($err) return;
+      }
+    }
+
+    $value->add($filename);
+    $item = $value->last();
+
+    if (empty($tmp)) {
+      foreach ($this->additionalFields['other'][$name] as $add) {
+        $item->set($add, '');
+      }
+
+      if (!empty($this->additionalFields['orientation'][$name])) {
+        $item->set('orientation', '');
+      }
+
+      if (!empty($this->additionalFields['link'][$name])) {
+        $item->set('link', 0);
+      }
+    }
+
+    try {
+      foreach ($tmp as $key => $val) {
+        $item->$key = $val;
+      }
+
+      $event->object->fileAdded($item);
+    } catch(Exception $e) {
+      $item->unlink();
+      $value->remove($item);
+      throw new WireException($e->getMessage());
+    }
+
+    $event->replace = true;
+  }
+
+  /**
+   * Hook file added
+   *
+   * @param HookEvent $event
+   */
+  public function fileAddedExtra(HookEvent $event) {
+    $p = $event->object->value['page'];
+    $image = $event->argumentsByName("pagefile");
+    $name = $event->object->name;
+
+    foreach ($this->additionalFields['other'][$name] as $add) {
+      $image->set($add, $image->$add);
+    }
+
+    if (!empty($this->additionalFields['orientation'][$name])) {
+      $image->set('orientation', $image->orientation);
+    }
+
+    if (!empty($this->additionalFields['link'][$name])) {
+      $image->set('link', $image->link);
+    }
+
+    $p->save($name);
+  }
+
+
+  /**
+   * Hook process input file
+   *
+   * @param HookEvent $event
+   */
+  public function processInputFileExtra(HookEvent $event) {
+    $input = $event->arguments(0);
+    $pagefile = $event->arguments(1);
+    $n = $event->arguments(2);
+    $changed = $event->return;
+    $languages = $this->noLang ? null : $this->wire('languages');
+    $name = $event->object->name;
+    $id = $name . '_' . $pagefile->hash;
+
+    $value = $event->object->attributes['value'];
+    $fieldName = $value->field->name;
+
+    $combine = $this->additionalFields['other'][$fieldName];
+    foreach (array('orientation', 'link') as $add) {
+      if (!empty($this->additionalFields[$add][$fieldName])) {
+        $combine[$add] = $add;
+      }
+    }
+
+    foreach ($combine as $key) {
+      if (isset($input[$key . '_' . $id])) {
+        $value = trim($input[$key . '_' . $id]);
+        if ($value != $pagefile->$key) {
+          $pagefile->$key = $value;
+          $changed = true;
+        }
+      }
+    }
+
+    // multi-language additional fields
+    if ($languages) foreach($languages as $language) {
+      foreach ($this->additionalFields['other'][$fieldName] as $add) {
+        $key = $language->isDefault() ? $add . '_' . $id : "$add{$language->id}_$id";
+        if (!isset($input[$key])) continue;
+        $value = trim($input[$key]);
+        if ($value != $pagefile->{$add}($language)) {
+          $pagefile->{$add}($language, $value);
+          $changed = true;
+        }
+      }
+    }
+
+    $event->return = $changed;
+  }
+
+
+  /**
+   * Hook add extra fields
+   *
+   * @param HookEvent $event
+   */
+  public function addExtraFields(HookEvent $event) {
+    if (in_array($event->object->className, $this->selectedInputfields)) {
+      $data = $this->mergeData($event->object->name);
+
+      $fieldset = $this->modules->get('InputfieldFieldset');
+      $fieldset->label = $this->_('Image Extra Fields');
+      $fieldset->collapsed = Inputfield::collapsedYes;
+      $fieldset->description = $this->_('Here you can add additional image fields.'); // Max image dimensions description
+
+      // move description fields
+      foreach ($event->return->children as $field) {
+        if (in_array($field->name, array('descriptionRows', 'noLang'))) {
+          $event->return->children->remove($field);
+          $fieldset->add($field);
+        }
+      }
+
+      // assign fields
+      foreach ($this->getExtraFields($data) as $name => $s) {
+        // no orientation field - no orientation values needed
+        if ($name === 'orientationValues' && (int)$data['orientationField']== 0) {
+          continue;
+        }
+
+        // add orientation field, reduce column width
+        if ($name === 'orientationField' && (int)$data['orientationField'] > 0) {
+          $s['columnWidth'] = 25;
+          $s['notes'] = '';
+        }
+
+        $field = $this->modules->get($s['type']);
+        $field->name = $name;
+        $field->value = $data[$name];
+
+        foreach ($s as $key => $val) {
+          if ($key != 'type') {
+            $field->{$key} = $val;
+          }
+        }
+
+        $fieldset->add($field);
+      }
+
+      $event->return->children->add($fieldset);
+    }
+  }
+
+  /**
+   * get extra fields
+   *
+   * @param array $data
+   */
+  public function getExtraFields($data) {
+    return array(
+      'captionField' => array(
+        'type' => 'InputfieldCheckbox',
+        'label' => $this->_('Add caption field?'),
+        'description' => $this->_('Enable Caption Input Field' . PHP_EOL . '(activate the checkbox to enable field `caption`)'),
+        'checked' => empty($data['captionField']) ? '' : 'checked',
+        'columnWidth' => 50
+      ),
+      'orientationField' => array(
+        'type' => 'InputfieldCheckbox',
+        'label' => $this->_('Add orientation field?'),
+        'description' => $this->_('Enable Image Orientation Select Field' . PHP_EOL . '(activate the checkbox to enable field `orientation`)'),
+        'checked' => empty($data['orientationField']) ? '' : 'checked',
+        'columnWidth' => 50,
+        'notes' => $this->_('You can set up orientation values after saving.')
+      ),
+      'orientationValues' => array(
+        'type' => 'InputfieldText',
+        'label' => $this->_('Enter image orientation values'),
+        'description' => $this->_('Values for Image Orientation Select Field' . PHP_EOL . '(comma-separated list)'),
+        'value' => $data['orientationValues'],
+        'size' => 45,
+        'columnWidth' => 25
+      ),
+      'linkField' => array(
+        'type' => 'InputfieldCheckbox',
+        'label' => $this->_('Add internal link field?'),
+        'description' => $this->_('Enable Choose-Link Field' . PHP_EOL . '(activate the checkbox to enable field `link`)'),
+        'checked' => empty($data['linkField']) ? '' : 'checked',
+        'columnWidth' => 50
+      ),
+      'otherField' => array(
+        'type' => 'InputfieldText',
+        'label' => $this->_('Add other text input fields?'),
+        'description' => $this->_('Add other fields as simple inputs' . PHP_EOL . '(comma-separated list)'),
+        'value' => $data['otherField'],
+        'size' => 80,
+        'columnWidth' => 50,
+        'notes' => $this->_('Do not use `orientation`, `link` or `caption` in this list.')
+      ),
+    );
+  }
+
+  /**
+   * merge data
+   *
+   * @param string $fieldName
+   */
+  private function mergeData($fieldName) {
+    $fieldConfig = $this->fields->get($fieldName)->data;
+    return array_merge(self::$defaults, $fieldConfig);
+  }
+
+  /**
+   * get additional input fields
+   *
+   * @param array $data
+   * @param string $name
+   */
+  private function getAdditionalInputFields($data, $name) {
+    // create basic array structure
+    foreach (array('other', 'orientation', 'link') as $item) {
+      if (!isset($this->additionalFields[$item][$name])) {
+        $this->additionalFields[$item][$name] = ($item === 'other') ? array() : '';
+      }
+    }
+
+    // check caption field
+    if (isset($data['captionField'])) {
+      if ($data['captionField'] > 0) {
+        $this->additionalFields['other'][$name]['caption'] = 'caption';
+      }
+    }
+
+    // check other fields
+    if (isset($data['otherField'])) {
+      if (!empty($data['otherField'])) {
+        $others = preg_replace('/\s+/', '', $data['otherField']);
+        $others = str_replace(';', ',', $others);
+
+        foreach (explode(',', $others) as $other) {
+          $this->additionalFields['other'][$name][$other] = $other;
+        }
+      }
+    }
+
+    // check orientation and get values
+    if (isset($data['orientationField']) && (int)$data['orientationField'] === 1) {
+      if (isset($data['orientationValues']) && !empty($data['orientationValues'])) {
+        $this->additionalFields['orientation'][$name] = $data['orientationValues'];
+      } else {
+        $this->additionalFields['orientation'][$name] = self::$defaults['orientationValues'];
+      }
+    }
+
+    // check link (boolean)
+    $if = isset($data['linkField']) && (int)$data['linkField'] === 1;
+    $this->additionalFields['link'][$name] = $if ? true : false;
+  }
+
+  /**
+   * render extra fields
+   *
+   * @param HookEvent $event
+   */
+  public function renderExtraFields(HookEvent $event) {
+    $pagefile = $event->arguments[0];
+    $id = $event->arguments[1];
+    $n = $event->arguments[2];
+    $out = $event->return;
+    $value = $event->object->attributes['value'];
+    $name = $value->field->name;
+    $outAdditional = '';
+
+    if (in_array($event->object->className, $this->selectedInputfields)) {
+      $data = $this->mergeData($name);
+
+      if (!empty($this->additionalFields['other'])) {
+        if (array_key_exists($name, $this->additionalFields['other'])) {
+          foreach ($this->additionalFields['other'][$name] as $field) {
+            $outAdditional .= $this->renderInputItemField($pagefile, $id, $n, $field);
+          }
+        }
+      }
+
+      if ((int)$data['orientationField'] > 0 && !empty($data['orientationValues'])) {
+        $outAdditional .= $this->renderSelectItemField($pagefile, $id, $n, 'orientation', $data);
+      }
+
+      if ((int)$data['linkField'] > 0) {
+        $outAdditional .= $this->renderLinkItemField($pagefile, $id, $n, 'link');
+      }
+
+      $splitOut = preg_split("/[\t]+/", $out);
+      $position = count($splitOut) - 2;
+
+      // replace label class and label for description
+      if (!is_null($this->languages)) {
+        foreach ($this->languages as $language) {
+          $combinedId = ($language->isDefault()) ? 'description_' . $id : 'description' . $language->id . '_' . $id;
+          $out = preg_replace('/(?<=<label\sfor=\'' . $combinedId . '\'\sclass=\').*?(?=\'[^>]*)/', 'detail', $out);
+          $out = preg_replace('/(?<=<label\sfor=\'' . $combinedId . '\'\sclass=\'detail\'>).*?(?=<)/', $this->_('Description'), $out);
+          $out = preg_replace('/(<input\stype=\'text\'\sname=\'' . $combinedId . '\')/', '$1 class=\'InputfieldMaxWidth\'', $out);
+        }
+      }
+
+      // rename description class to avoid special css style
+      $out = preg_replace('/InputfieldFileDescription/', '$1' . '2', $out);
+
+      // insert additional output
+      $out = preg_replace('/(<input\sclass=\'InputfieldFileSort\')/', $outAdditional . '$1', $out);
+
+      $event->return = $out;
+    }
+  }
+
+  /**
+   * check table columns
+   *
+   * @param HookEvent $event
+   */
+  public function checkTableColumns(HookEvent $event) {
+    $columns = array();
+    foreach (self::$defaults as $add => $default) {
+      if ($this->input->post->{$add}) {
+        if (preg_match('/(.*?)Field$/', $add)) {
+          if ($add !== 'otherField') {
+            $columns[] = preg_replace('/Field$/', '', $add);
+          } else {
+            $others = preg_replace('/\s+/', '', $this->input->post->{$add});
+            $others = str_replace(';', ',', $others);
+            foreach (explode(',', $others) as $field) {
+              $columns[] = $field;
+            }
+          }
+        }
+      }
+    }
+
+    $db = wire('database');
+    $table = $db->escapeTable('field_' . $this->input->post->name);
+    $updated = false;
+
+    if (!empty($columns)) {
+      foreach ($columns as $col) {
+        $sql = "SHOW COLUMNS FROM $table LIKE '$col'";
+
+        try {
+          $query = $db->prepare($sql);
+          $query->execute();
+          $numRows = (int) $query->rowCount();
+          $query->closeCursor();
+        } catch(Exception $e) {
+          $this->errors($e->getMessage(), Notice::log);
+        }
+
+        if (empty($numRows)) {
+          $updated = true;
+          $addColumn = "ALTER TABLE `{$table}` ADD `{$col}` text NOT NULL";
+
+          try {
+            $db->exec($addColumn);
+            $this->message("Added column '{$col}' for '{$table}'", Notice::log);
+          } catch(Exception $e) {
+            $this->errors($e->getMessage(), Notice::log);
+          }
+        }
+      }
+
+      if ($updated) {
+        try {
+          $date = date('Y-m-d H:i:s');
+          $query = $db->prepare("UPDATE `$table` SET created=:created, modified=:modified");
+          $query->bindValue(":created", $date);
+          $query->bindValue(":modified", $date);
+          $query->execute();
+          $this->message("Updated created/modified for '{$table}'", Notice::log);
+        } catch(Exception $e) {
+          $this->errors($e->getMessage(), Notice::log);
+        }
+      }
+    }
+  }
+
+  /**
+   * render input item field
+   * for caption and other fields
+   *
+   * @param Pagefile $pagefile
+   * @param string $id
+   * @param int $n
+   * @param string $current
+   */
+  protected function renderInputItemField(Pagefile $pagefile, $id, $n, $current) {
+    $out = '';
+    $tabs = '';
+    static $hasLangTabs = null;
+
+    $userLanguage = $this->wire('user')->language;
+    $languages = $this->noLang ? null : $this->wire('languages');
+
+    if (!$userLanguage || !$languages || $languages->count() < 2) {
+      $numLanguages = 0;
+      $languages = array(null);
+    } else {
+      $numLanguages = $languages->count();
+      if (is_null($hasLangTabs)) $hasLangTabs = $this->wire('modules')->isInstalled('LanguageTabs');
+    }
+
+    foreach ($languages as $language) {
+      $fieldName = $current . '_' . $id;
+      $fieldLabel = $this->_(ucfirst($current));
+      $labelClass = "detail";
+
+      if ($language) {
+        if (!$language->isDefault()) $fieldName = $current . $language->id . '_' . $id;
+        $tabID = "langTab_{$id}__$language";
+        $tabs .= "<li><a href='#$tabID'>" . $language->get('title|name') . "</a></li>";
+        $out .= "<div class='InputfieldFile" . ucfirst($current) . " LanguageSupport' data-language='$language' id='$tabID'>"; // open wrapper
+      } else {
+        $out .= "<div class='InputfieldFile" . ucfirst($current) . "'>"; // open wrapper
+      }
+
+      $out .= "<label for='$fieldName' class='$labelClass'>$fieldLabel</label>";
+      $value = $this->wire('sanitizer')->entities($pagefile->{$current}($language));
+      $out .= "<input type='text' name='$fieldName' class='InputfieldMaxWidth' id='$fieldName' value='$value' />";
+      $out .= "</div>"; // close wrapper
+    }
+
+    if ($numLanguages && $hasLangTabs) {
+      $ajax = $this->wire('config')->ajax;
+      $out = "<div class='hasLangTabs langTabsContainer'><div class='langTabs'><ul>$tabs</ul>$out</div></div>";
+      if ($ajax) $out .= "<script>setupLanguageTabs($('.InputfieldContent'));</script>";
+    }
+
+    if ($this->useTags) {
+      $tags = $this->wire('sanitizer')->entities($pagefile->tags);
+      $out .= "<span class='InputfieldFileTags'>" .
+        "<label for='tags_$id' class='detail'>{$this->tagsFieldLabel}</label>" .
+        "<input type='text' name='tags_$id' id='tags_$id' value='$tags' />" .
+        "</span>";
+    }
+
+    return $out;
+  }
+
+  /**
+   * render select item field
+   *
+   * @param Pagefile $pagefile
+   * @param string $id
+   * @param int $n
+   * @param string $current
+   * @param array $data
+   */
+  protected function renderSelectItemField(Pagefile $pagefile, $id, $n, $current, $data) {
+    $fieldName = $current . '_' . $id;
+
+    $options = '';
+    foreach (explode(',', preg_replace('/\s+/', '', $data['orientationValues'])) as $option) {
+      $selected = ($pagefile->orientation === $option) ? 'selected' : '';
+      $options .= "<option value='$option' $selected>$option</option>";
+    }
+
+    $out = "<hr>" .
+      "<div class='InputfieldContent'>" .
+      "<label for='$fieldName'>" . ucfirst($current) . "</label>" .
+      "<select name='$fieldName' size='1'>" . $options . "</select>" .
+      "</div>";
+
+    return $out;
+  }
+
+  /**
+   * render link item field
+   *
+   * @param Pagefile $pagefile
+   * @param string $id
+   * @param int $n
+   * @param string $current
+   */
+  protected function renderLinkItemField(Pagefile $pagefile, $id, $n, $current) {
+    $fieldName = $current . '_' . $id;
+    $field = $this->modules->get('InputfieldPageListSelect');
+    $field->setAttribute('name+id', $fieldName);
+    $field->startLabel = $this->_('Choose Page Link');
+    $field->columnWidth = 50;
+    $field->attr('value', (int)$pagefile->link);
+
+    return "<hr><div class='InputfieldContent'><label for='$fieldName'>{$field->startLabel}</label>" . $field->render() . "</div>";
+  }
+
+  /**
+   * save default module configurations on install
+   */
+  public function ___install() {
+    wire('modules')->saveModuleConfigData($this, self::$basics);
+  }
+
+  /**
+   * module uninstall
+   */
+  public function ___uninstall() {
+  }
+
+}
