@@ -913,11 +913,13 @@ class ImageExtra extends WireData implements Module, ConfigurableModule {
       $position = count($splitOut) - 2;
 
       // replace label class and label for description
-      foreach ($this->languages as $language) {
-        $combinedId = ($language->isDefault()) ? 'description_' . $id : 'description' . $language->id . '_' . $id;
-        $out = preg_replace('/(?<=<label\sfor=\'' . $combinedId . '\'\sclass=\').*?(?=\'[^>]*)/', 'detail', $out);
-        $out = preg_replace('/(?<=<label\sfor=\'' . $combinedId . '\'\sclass=\'detail\'>).*?(?=<)/', $this->_('Description'), $out);
-        $out = preg_replace('/(<input\stype=\'text\'\sname=\'' . $combinedId . '\')/', '$1 class=\'InputfieldMaxWidth\'', $out);
+      if (!is_null($this->languages)) {
+        foreach ($this->languages as $language) {
+          $combinedId = ($language->isDefault()) ? 'description_' . $id : 'description' . $language->id . '_' . $id;
+          $out = preg_replace('/(?<=<label\sfor=\'' . $combinedId . '\'\sclass=\').*?(?=\'[^>]*)/', 'detail', $out);
+          $out = preg_replace('/(?<=<label\sfor=\'' . $combinedId . '\'\sclass=\'detail\'>).*?(?=<)/', $this->_('Description'), $out);
+          $out = preg_replace('/(<input\stype=\'text\'\sname=\'' . $combinedId . '\')/', '$1 class=\'InputfieldMaxWidth\'', $out);
+        }
       }
 
       // rename description class to avoid special css style
