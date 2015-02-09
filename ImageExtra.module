@@ -678,7 +678,7 @@ class ImageExtra extends WireData implements Module, ConfigurableModule {
     $input = $event->arguments(0);
     $pagefile = $event->arguments(1);
     $n = $event->arguments(2);
-    $changed = false;
+    $changed = $event->return;
     $languages = $this->noLang ? null : $this->wire('languages');
     $name = $event->object->name;
     $id = $name . '_' . $pagefile->hash;
@@ -896,8 +896,10 @@ class ImageExtra extends WireData implements Module, ConfigurableModule {
       $data = $this->mergeData($name);
 
       if (!empty($this->additionalFields['other'])) {
-        foreach ($this->additionalFields['other'][$name] as $field) {
-          $outAdditional .= $this->renderInputItemField($pagefile, $id, $n, $field);
+        if (array_key_exists($name, $this->additionalFields['other'])) {
+          foreach ($this->additionalFields['other'][$name] as $field) {
+            $outAdditional .= $this->renderInputItemField($pagefile, $id, $n, $field);
+          }
         }
       }
 
@@ -1048,7 +1050,7 @@ class ImageExtra extends WireData implements Module, ConfigurableModule {
     if ($numLanguages && $hasLangTabs) {
       $ajax = $this->wire('config')->ajax;
       $out = "<div class='hasLangTabs langTabsContainer'><div class='langTabs'><ul>$tabs</ul>$out</div></div>";
-      if ($ajax) $out .= "<script>setupLanguageTabs($('#wrap_" . $id . "'));</script>";
+      if ($ajax) $out .= "<script>setupLanguageTabs($('.InputfieldContent'));</script>";
     }
 
     if ($this->useTags) {
