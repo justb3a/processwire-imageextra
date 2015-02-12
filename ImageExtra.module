@@ -1042,7 +1042,7 @@ class ImageExtra extends WireData implements Module, ConfigurableModule {
       }
 
       $out .= "<label for='$fieldName' class='$labelClass'>$fieldLabel</label>";
-      $value = $this->wire('sanitizer')->entities($pagefile->{$current}($language));
+      $value = $this->wire('sanitizer')->entities($language ? $pagefile->{$current}($language) : $pagefile->{$current});
       $out .= "<input type='text' name='$fieldName' class='InputfieldMaxWidth' id='$fieldName' value='$value' />";
       $out .= "</div>"; // close wrapper
     }
