@@ -159,6 +159,20 @@ class ImageExtra extends WireData implements Module, ConfigurableModule {
   }
 
   /**
+   * fix any backreferences
+   * If there's a chance your replacement text contains any strings such as "$0.95",
+   * You'll need to escape those $n backreferences:
+   *
+   * @see http://us1.php.net/manual/en/function.preg-replace.php#103985
+   * @param string $x
+   * @return array
+   *
+   */
+  function escape_backreference($x) {
+    return preg_replace('/\$(\d)/', '\\\$$1', $x);
+  }
+
+  /**
    * Add a custom method for each custom field
    *
    */
@@ -928,7 +942,7 @@ class ImageExtra extends WireData implements Module, ConfigurableModule {
       $out = preg_replace('/InputfieldFileDescription/', '$1' . '2', $out);
 
       // insert additional output
-      $out = preg_replace('/(<input\sclass=\'InputfieldFileSort\')/', $outAdditional . '$1', $out);
+      $out = preg_replace('/(<input\sclass=\'InputfieldFileSort\')/', $this->escape_backreference($outAdditional) . '$1', $out);
 
       $event->return = $out;
     }
@@ -1042,7 +1056,7 @@ class ImageExtra extends WireData implements Module, ConfigurableModule {
       }
 
       $out .= "<label for='$fieldName' class='$labelClass'>$fieldLabel</label>";
-      $value = $this->wire('sanitizer')->entities($pagefile->{$current}($language));
+      $value = $this->wire('sanitizer')->entities($language ? $pagefile->{$current}($language) : $pagefile->{$current});
       $out .= "<input type='text' name='$fieldName' class='InputfieldMaxWidth' id='$fieldName' value='$value' />";
       $out .= "</div>"; // close wrapper
     }
