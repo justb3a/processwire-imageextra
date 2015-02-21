@@ -7,7 +7,7 @@
 * See README.md for usage instructions.
 *
 * @author Tabea David <td@kf-interactive.com>
-* @version 0.0.1
+* @version 0.0.2
 * @copyright Copyright (c) 2015
 * @see https://github.com/justonestep/processwire-imageextra
 * @see http://www.processwire.com
@@ -29,7 +29,7 @@ class ImageExtra extends WireData implements Module, ConfigurableModule {
     return array(
       'title' => 'Image Extra',
       'summary' => 'Adds custom fields to image fields (including multi-language support)',
-      'version' => 1,
+      'version' => 2,
       'href' => 'https://github.com/justonestep/processwire-imageextra',
       'singular' => true,
       'autoload' => true,
@@ -159,6 +159,20 @@ class ImageExtra extends WireData implements Module, ConfigurableModule {
   }
 
   /**
+   * fix any backreferences
+   * If there's a chance your replacement text contains any strings such as "$0.95",
+   * You'll need to escape those $n backreferences:
+   *
+   * @see http://us1.php.net/manual/en/function.preg-replace.php#103985
+   * @param string $x
+   * @return array
+   *
+   */
+  function escape_backreference($x) {
+    return preg_replace('/\$(\d)/', '\\\$$1', $x);
+  }
+
+  /**
    * Add a custom method for each custom field
    *
    */
@@ -182,22 +196,16 @@ class ImageExtra extends WireData implements Module, ConfigurableModule {
       // add property and method for other fields
       foreach ($this->array_multi_merge($this->additionalFields['other']) as $current) {
         $this->addHookProperty('Pageimage::' . $current, function($event) {});
-        $this->addHook('Pageimage::' . $current, function($event) {
-          $event->return = $this->addCustomMethod($event, $event->method);
-        });
+        $this->addHook('Pageimage::' . $current, $this, 'addCustomMethod');
       }
 
       // add property and method for orientation
       $this->addHookProperty('Pageimage::orientation', function($event) {});
-      $this->addHook('Pageimage::orientation', function($event) {
-        $event->return = $this->addOrientation($event);
-      });
+      $this->addHook('Pageimage::orientation', $this, 'addOrientation');
 
       // add property and method for link
       $this->addHookProperty('Pageimage::link', function($event) {});
-      $this->addHook('Pageimage::link', function($event) {
-        $event->return = $this->addLink($event);
-      });
+      $this->addHook('Pageimage::link', $this, 'addLink');
     }
   }
 
@@ -208,7 +216,7 @@ class ImageExtra extends WireData implements Module, ConfigurableModule {
    * @return string
    *
    */
-  private function addOrientation(HookEvent $event) {
+  public function addOrientation(HookEvent $event) {
     $value = $event->arguments(0);
 
     if (!is_null($value)) {
@@ -217,7 +225,7 @@ class ImageExtra extends WireData implements Module, ConfigurableModule {
     }
 
     // we only return strings, so return blank rather than null
-    return (is_null($value)) ? '' : $value;
+    $event->return = (is_null($value)) ? '' : $value;
   }
 
 
@@ -228,7 +236,7 @@ class ImageExtra extends WireData implements Module, ConfigurableModule {
    * @return string
    *
    */
-  private function addLink(HookEvent $event) {
+  public function addLink(HookEvent $event) {
     $value = $event->arguments(0);
 
     if (!is_null($value)) {
@@ -237,7 +245,7 @@ class ImageExtra extends WireData implements Module, ConfigurableModule {
     }
 
     // we only return strings, so return blank rather than null
-    return (is_null($value)) ? '' : $value;
+    $event->return = (is_null($value)) ? '' : $value;
   }
 
   /**
@@ -247,9 +255,10 @@ class ImageExtra extends WireData implements Module, ConfigurableModule {
    * @param string $current
    *
    */
-  private function addCustomMethod(HookEvent $event, $current) {
+  public function addCustomMethod(HookEvent $event) {
     $language = $event->arguments(0);
     $value = $event->arguments(1);
+    $current = $event->method;
 
     if (!is_null($value)) {
       return ($language === true) ? $this->setExtra($current, $value, null, $event->object) : $this->setExtra($current, $value, $language, $event->object);
@@ -299,7 +308,7 @@ class ImageExtra extends WireData implements Module, ConfigurableModule {
     // we only return strings, so return blank rather than null
     if (is_null($value)) $value = '';
 
-    return $value;
+    $event->return = $value;
   }
 
 
@@ -922,13 +931,13 @@ class ImageExtra extends WireData implements Module, ConfigurableModule {
           $out = preg_replace('/(?<=<label\sfor=\'' . $combinedId . '\'\sclass=\'detail\'>).*?(?=<)/', $this->_('Description'), $out);
           $out = preg_replace('/(<input\stype=\'text\'\sname=\'' . $combinedId . '\')/', '$1 class=\'InputfieldMaxWidth\'', $out);
         }
+
+        // rename description class to avoid special css style
+        $out = preg_replace('/InputfieldFileDescription/', '$1' . '2', $out);
       }
 
-      // rename description class to avoid special css style
-      $out = preg_replace('/InputfieldFileDescription/', '$1' . '2', $out);
-
       // insert additional output
-      $out = preg_replace('/(<input\sclass=\'InputfieldFileSort\')/', $outAdditional . '$1', $out);
+      $out = preg_replace('/(<input\sclass=\'InputfieldFileSort\')/', $this->escape_backreference($outAdditional) . '$1', $out);
 
       $event->return = $out;
     }
@@ -1042,7 +1051,7 @@ class ImageExtra extends WireData implements Module, ConfigurableModule {
       }
 
       $out .= "<label for='$fieldName' class='$labelClass'>$fieldLabel</label>";
-      $value = $this->wire('sanitizer')->entities($pagefile->{$current}($language));
+      $value = $this->wire('sanitizer')->entities($language ? $pagefile->{$current}($language) : $pagefile->{$current});
       $out .= "<input type='text' name='$fieldName' class='InputfieldMaxWidth' id='$fieldName' value='$value' />";
       $out .= "</div>"; // close wrapper
     }
