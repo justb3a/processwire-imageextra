@@ -196,16 +196,12 @@ class ImageExtra extends WireData implements Module, ConfigurableModule {
       // add property and method for other fields
       foreach ($this->array_multi_merge($this->additionalFields['other']) as $current) {
         $this->addHookProperty('Pageimage::' . $current, function($event) {});
-        $this->addHook('Pageimage::' . $current, function($event) {
-          $event->return = $this->addCustomMethod($event, $event->method);
-        });
+        $this->addHook('Pageimage::' . $current, $this, 'addCustomMethod');
       }
 
       // add property and method for orientation
       $this->addHookProperty('Pageimage::orientation', function($event) {});
-      $this->addHook('Pageimage::orientation', function($event) {
-        $event->return = $this->addOrientation($event);
-      });
+      $this->addHook('Pageimage::orientation', $this, 'addOrientation');
 
       // add property and method for link
       $this->addHookProperty('Pageimage::link', function($event) {});
@@ -220,7 +216,7 @@ class ImageExtra extends WireData implements Module, ConfigurableModule {
    * @return string
    *
    */
-  private function addOrientation(HookEvent $event) {
+  public function addOrientation(HookEvent $event) {
     $value = $event->arguments(0);
 
     if (!is_null($value)) {
@@ -229,7 +225,7 @@ class ImageExtra extends WireData implements Module, ConfigurableModule {
     }
 
     // we only return strings, so return blank rather than null
-    return (is_null($value)) ? '' : $value;
+    $event->return = (is_null($value)) ? '' : $value;
   }
 
 
@@ -259,9 +255,10 @@ class ImageExtra extends WireData implements Module, ConfigurableModule {
    * @param string $current
    *
    */
-  private function addCustomMethod(HookEvent $event, $current) {
+  public function addCustomMethod(HookEvent $event) {
     $language = $event->arguments(0);
     $value = $event->arguments(1);
+    $current = $event->method;
 
     if (!is_null($value)) {
       return ($language === true) ? $this->setExtra($current, $value, null, $event->object) : $this->setExtra($current, $value, $language, $event->object);
@@ -311,7 +308,7 @@ class ImageExtra extends WireData implements Module, ConfigurableModule {
     // we only return strings, so return blank rather than null
     if (is_null($value)) $value = '';
 
-    return $value;
+    $event->return = $value;
   }
 
 
