@@ -931,10 +931,10 @@ class ImageExtra extends WireData implements Module, ConfigurableModule {
           $out = preg_replace('/(?<=<label\sfor=\'' . $combinedId . '\'\sclass=\'detail\'>).*?(?=<)/', $this->_('Description'), $out);
           $out = preg_replace('/(<input\stype=\'text\'\sname=\'' . $combinedId . '\')/', '$1 class=\'InputfieldMaxWidth\'', $out);
         }
-      }
 
-      // rename description class to avoid special css style
-      $out = preg_replace('/InputfieldFileDescription/', '$1' . '2', $out);
+        // rename description class to avoid special css style
+        $out = preg_replace('/InputfieldFileDescription/', '$1' . '2', $out);
+      }
 
       // insert additional output
       $out = preg_replace('/(<input\sclass=\'InputfieldFileSort\')/', $this->escape_backreference($outAdditional) . '$1', $out);
