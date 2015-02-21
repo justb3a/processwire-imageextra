@@ -209,9 +209,7 @@ class ImageExtra extends WireData implements Module, ConfigurableModule {
 
       // add property and method for link
       $this->addHookProperty('Pageimage::link', function($event) {});
-      $this->addHook('Pageimage::link', function($event) {
-        $event->return = $this->addLink($event);
-      });
+      $this->addHook('Pageimage::link', $this, 'addLink');
     }
   }
 
@@ -242,7 +240,7 @@ class ImageExtra extends WireData implements Module, ConfigurableModule {
    * @return string
    *
    */
-  private function addLink(HookEvent $event) {
+  public function addLink(HookEvent $event) {
     $value = $event->arguments(0);
 
     if (!is_null($value)) {
@@ -251,7 +249,7 @@ class ImageExtra extends WireData implements Module, ConfigurableModule {
     }
 
     // we only return strings, so return blank rather than null
-    return (is_null($value)) ? '' : $value;
+    $event->return = (is_null($value)) ? '' : $value;
   }
 
   /**
