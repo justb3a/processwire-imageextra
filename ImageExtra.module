@@ -7,7 +7,7 @@
 * See README.md for usage instructions.
 *
 * @author Tabea David <td@kf-interactive.com>
-* @version 0.0.2
+* @version 0.0.3
 * @copyright Copyright (c) 2015
 * @see https://github.com/justonestep/processwire-imageextra
 * @see http://www.processwire.com
@@ -29,7 +29,7 @@ class ImageExtra extends WireData implements Module, ConfigurableModule {
     return array(
       'title' => 'Image Extra',
       'summary' => 'Adds custom fields to image fields (including multi-language support)',
-      'version' => 2,
+      'version' => 3,
       'href' => 'https://github.com/justonestep/processwire-imageextra',
       'singular' => true,
       'autoload' => true,
@@ -98,12 +98,6 @@ class ImageExtra extends WireData implements Module, ConfigurableModule {
 
     return $fields;
   }
-
-  /**
-   * Initialize the module
-   *
-   */
-  public function init() {}
 
   /**
    * Initialize the module - ready
@@ -791,14 +785,16 @@ class ImageExtra extends WireData implements Module, ConfigurableModule {
       'captionField' => array(
         'type' => 'InputfieldCheckbox',
         'label' => $this->_('Add caption field?'),
-        'description' => $this->_('Enable Caption Input Field' . PHP_EOL . '(activate the checkbox to enable field `caption`)'),
+        'description' => $this->_('Enable Caption Input Field') . PHP_EOL .
+                         $this->_('(activate the checkbox to enable field `caption`)'),
         'checked' => empty($data['captionField']) ? '' : 'checked',
         'columnWidth' => 50
       ),
       'orientationField' => array(
         'type' => 'InputfieldCheckbox',
         'label' => $this->_('Add orientation field?'),
-        'description' => $this->_('Enable Image Orientation Select Field' . PHP_EOL . '(activate the checkbox to enable field `orientation`)'),
+        'description' => $this->_('Enable Image Orientation Select Field') . PHP_EOL .
+                         $this->_('(activate the checkbox to enable field `orientation`)'),
         'checked' => empty($data['orientationField']) ? '' : 'checked',
         'columnWidth' => 50,
         'notes' => $this->_('You can set up orientation values after saving.')
@@ -806,7 +802,8 @@ class ImageExtra extends WireData implements Module, ConfigurableModule {
       'orientationValues' => array(
         'type' => 'InputfieldText',
         'label' => $this->_('Enter image orientation values'),
-        'description' => $this->_('Values for Image Orientation Select Field' . PHP_EOL . '(comma-separated list)'),
+        'description' => $this->_('Values for Image Orientation Select Field') . PHP_EOL .
+                         $this->_('(comma-separated list)'),
         'value' => $data['orientationValues'],
         'size' => 45,
         'columnWidth' => 25
@@ -814,14 +811,16 @@ class ImageExtra extends WireData implements Module, ConfigurableModule {
       'linkField' => array(
         'type' => 'InputfieldCheckbox',
         'label' => $this->_('Add internal link field?'),
-        'description' => $this->_('Enable Choose-Link Field' . PHP_EOL . '(activate the checkbox to enable field `link`)'),
+        'description' => $this->_('Enable Choose-Link Field') . PHP_EOL .
+                         $this->_('(activate the checkbox to enable field `link`)'),
         'checked' => empty($data['linkField']) ? '' : 'checked',
         'columnWidth' => 50
       ),
       'otherField' => array(
         'type' => 'InputfieldText',
         'label' => $this->_('Add other text input fields?'),
-        'description' => $this->_('Add other fields as simple inputs' . PHP_EOL . '(comma-separated list)'),
+        'description' => $this->_('Add other fields as simple inputs') . PHP_EOL .
+                         $this->_('(comma-separated list)'),
         'value' => $data['otherField'],
         'size' => 80,
         'columnWidth' => 50,
