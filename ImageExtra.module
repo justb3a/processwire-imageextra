@@ -116,7 +116,7 @@ class ImageExtra extends WireData implements Module, ConfigurableModule {
     $admin = $this->config->urls->admin;
     $backend = strpos($this->page->url, $admin);
 
-  if (in_array($this->page->name, array('edit', 'field', 'module', 'users')) || $backend === false) {
+    if (in_array($this->page->name, array('edit', 'field', 'module', 'users')) || $backend === false) {
       $this->addHookAfter('InputfieldImage::getConfigInputfields', $this, 'addExtraFields');
       $this->addHookAfter('InputfieldImage::renderItem', $this, 'renderExtraFields');
       $this->addHookBefore('ProcessField::executeSave', $this, 'checkTableColumns');
@@ -131,6 +131,10 @@ class ImageExtra extends WireData implements Module, ConfigurableModule {
           $this->addHookAfter('Fieldtype::loadPageField', $this, 'loadPageFieldExtra');
           $this->addHookAfter('FieldtypeFile::sleepValue', $this, 'sleepExtraValue');
           $this->addHookAfter('FieldtypeFile::wakeupValue', $this, 'wakeupExtraValue');
+
+          if (isset($this->additionalFields['link'])) {
+            $this->config->scripts->append($this->config->urls->InputfieldPageListSelect . 'InputfieldPageListSelect.min.js');
+          }
         }
       }
     }
