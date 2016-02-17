@@ -16,7 +16,7 @@
 /**
 * Class ImageExtra
 */
-class ImageExtra extends WireData implements Module, ConfigurableModule {
+class ImageExtra extends WireData implements Module {
 
   /**
    * Retrieves module meta data
@@ -49,13 +49,6 @@ class ImageExtra extends WireData implements Module, ConfigurableModule {
   );
 
   /**
-   * @field array basic config values for module settings
-   */
-  protected static $basics = array(
-    'selectedInputfields' => array('InputfieldImage')
-  );
-
-  /**
    * @field array additional fields
    */
   protected $additionalFields = array(
@@ -63,41 +56,6 @@ class ImageExtra extends WireData implements Module, ConfigurableModule {
     'orientation' => array(),
     'link' => array()
   );
-
-  /**
-   * Retrieves the list of config input fields
-   *
-   * Implementation of the ConfigurableModule interface
-   *
-   * @param array $data The config data
-   * @return InputfieldWrapper
-   * @see http://processwire.com/apigen/class-ConfigurableModule.html
-   */
-  public static function getModuleConfigInputfields(array $data) {
-    $fields = new InputfieldWrapper();
-    $modules = wire('modules');
-
-    // default config values
-    $data = array_merge(self::$basics, $data);
-
-    $field = $modules->get('InputfieldAsmSelect');
-    $field->attr('value', $data['selectedInputfields']);
-    $field->description = __('Select the inputfields where the extra fields should be attached.');
-    $field->addOption('', '');
-    $field->label = __('Select Image Inputfields');
-    $field->attr('name', 'selectedInputfields');
-    $field->required = true;
-
-    foreach (wire('modules') as $module) {
-      if (preg_match('/^Inputfield/', $module)) {
-        $field->addOption($module->name, $module->name);
-      }
-    }
-
-    $fields->append($field);
-
-    return $fields;
-  }
 
   /**
    * Initialize the module - ready
@@ -109,10 +67,6 @@ class ImageExtra extends WireData implements Module, ConfigurableModule {
    *
    */
   public function ready() {
-    if (is_null($this->selectedInputfields)) {
-      $this->selectedInputfields = self::$basics;
-    }
-
     $admin = $this->config->urls->admin;
     $backend = strpos($this->page->url, $admin);
 
@@ -175,22 +129,15 @@ class ImageExtra extends WireData implements Module, ConfigurableModule {
    *
    */
   public function addCustomMethods() {
-    $fieldNames = array();
-    $fieldNameFields = wire('fields')->find('inputfieldClass=' . implode('|', $this->selectedInputfields));
-    if (count($fieldNameFields)) {
-      foreach ($fieldNameFields as $f) {
-        $fieldNames[$f->name] = $f->name;
+    $imagefields = false;
+    foreach ($this->fields as $field) {
+      if ($field->type instanceof FieldtypeImage) {
+        $this->getAdditionalInputFields($field);
+        $imagefields = true;
       }
     }
 
-    if (!empty($fieldNames)) {
-      foreach ($fieldNames as $fieldName) {
-        $fieldConfig = $this->fields->get($fieldName);
-        if (!empty($fieldConfig)) {
-          $this->getAdditionalInputFields($fieldConfig->data, $fieldName);
-        }
-      }
-
+    if ($imagefields) {
       // add property and method for other fields
       foreach ($this->array_multi_merge($this->additionalFields['other']) as $current) {
         $this->addHookProperty('Pageimage::' . $current, function($event) {});
@@ -380,7 +327,7 @@ class ImageExtra extends WireData implements Module, ConfigurableModule {
     if (!$page->id || !$field->id) return null;
     if (is_null($field->inputfieldClass)) return null;
 
-    if (in_array($field->inputfieldClass, $this->selectedInputfields)) {
+    if ($field->type instanceof FieldtypeImage) {
       $database = $this->wire('database');
       $isMulti = $field->type instanceof FieldtypeMulti;
       $page_id = (int) $page->id;
@@ -509,7 +456,7 @@ class ImageExtra extends WireData implements Module, ConfigurableModule {
     $field = $event->arguments(1);
     $value = $event->arguments(2);
 
-    if (in_array($field->inputfieldClass, $this->selectedInputfields)) {
+    if ($field->type instanceof FieldtypeImage) {
       if (!is_array($value) || array_key_exists('data', $value)) $value = array($value);
 
       $pagefiles = array();
@@ -733,7 +680,7 @@ class ImageExtra extends WireData implements Module, ConfigurableModule {
    * @param HookEvent $event
    */
   public function addExtraFields(HookEvent $event) {
-    if (in_array($event->object->className, $this->selectedInputfields)) {
+    if ($event->object instanceof InputfieldImage) {
       $data = $this->mergeData($event->object->name);
 
       $fieldset = $this->modules->get('InputfieldFieldset');
@@ -846,10 +793,12 @@ class ImageExtra extends WireData implements Module, ConfigurableModule {
   /**
    * get additional input fields
    *
-   * @param array $data
-   * @param string $name
+   * @param Field $field
    */
-  private function getAdditionalInputFields($data, $name) {
+  private function getAdditionalInputFields($field) {
+    $data = $field->data;
+    $name = $field->name;
+
     // create basic array structure
     foreach (array('other', 'orientation', 'link') as $item) {
       if (!isset($this->additionalFields[$item][$name])) {
@@ -904,7 +853,7 @@ class ImageExtra extends WireData implements Module, ConfigurableModule {
     $name = $value->field->name;
     $outAdditional = '';
 
-    if (in_array($event->object->className, $this->selectedInputfields)) {
+    if ($event->object instanceof InputfieldImage) {
       $data = $this->mergeData($name);
 
       if (!empty($this->additionalFields['other'])) {
@@ -1120,19 +1069,6 @@ class ImageExtra extends WireData implements Module, ConfigurableModule {
     $field->attr('value', (int)$pagefile->link);
 
     return "<hr><div class='InputfieldContent'><label for='$fieldName'>{$field->startLabel}</label>" . $field->render() . "</div>";
-  }
-
-  /**
-   * save default module configurations on install
-   */
-  public function ___install() {
-    wire('modules')->saveModuleConfigData($this, self::$basics);
-  }
-
-  /**
-   * module uninstall
-   */
-  public function ___uninstall() {
   }
 
 }
