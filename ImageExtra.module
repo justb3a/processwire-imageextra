@@ -496,6 +496,11 @@ class ImageExtra extends WireData implements Module {
     $overwrite = $value->field->overwrite;
     $name = $event->object->name;
     $tmp = array();
+    $rm = null;
+
+    $isAjax = $this->wire('input')->get('InputfieldFileAjax') 
+      || $this->wire('input')->get('reloadInputfieldAjax')
+      || $this->wire('input')->get('renderInputfieldAjax');
 
     if ($maxFiles > 1 && $total >= $maxFiles) return;
 
@@ -523,8 +528,8 @@ class ImageExtra extends WireData implements Module {
         if ($overwrite) $rm = false;
       }
       if ($rm) {
-        $event->object->processInputDeleteFile($pagefile);
-        $singleFileReplacement = true;
+        if ($overwrite) $event->object->processInputDeleteFile($pagefile);
+        $event->object->singleFileReplacement = true;
       }
     }
 
@@ -533,6 +538,7 @@ class ImageExtra extends WireData implements Module {
       clearstatcache();
 
       if ($pagefile) {
+        // already have a file of the same name
         if ($pagefile instanceof Pageimage) $pagefile->removeVariations();
         $tmp['description'] = $pagefile->description;
         $tmp['tags'] = $pagefile->tags;
@@ -586,6 +592,9 @@ class ImageExtra extends WireData implements Module {
       foreach ($tmp as $key => $val) {
         $item->$key = $val;
       }
+
+      // items saved in ajax or uploadOnly mode are temporary till saved in non-ajax/non-uploadOnly
+      if ($isAjax && !$overwrite) $item->isTemp(true);
 
       $event->object->fileAdded($item);
     } catch(Exception $e) {
