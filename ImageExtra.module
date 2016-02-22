@@ -1020,7 +1020,10 @@ class ImageExtra extends WireData implements Module {
     if ($numLanguages && $hasLangTabs) {
       $ajax = $this->wire('config')->ajax;
       $out = "<div class='hasLangTabs langTabsContainer'><div class='langTabs'><ul>$tabs</ul>$out</div></div>";
-      if ($ajax) $out .= "<script>setupLanguageTabs($('.InputfieldContent'));</script>";
+      if ($ajax) {
+        $out .= "<script>setupLanguageTabs($('.InputfieldContent'));</script>";
+        $out .= '<script>$(".InputfieldPageListSelectData").each(function() { InputfieldPageListSelect.init($(this)); });</script>';
+      }
     }
 
     if ($this->useTags) {
