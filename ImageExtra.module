@@ -498,7 +498,7 @@ class ImageExtra extends WireData implements Module {
     $tmp = array();
     $rm = null;
 
-    $isAjax = $this->wire('input')->get('InputfieldFileAjax') 
+    $isAjax = $this->wire('input')->get('InputfieldFileAjax')
       || $this->wire('input')->get('reloadInputfieldAjax')
       || $this->wire('input')->get('renderInputfieldAjax');
 
@@ -612,7 +612,6 @@ class ImageExtra extends WireData implements Module {
    * @param HookEvent $event
    */
   public function fileAddedExtra(HookEvent $event) {
-    $p = $event->object->value['page'];
     $image = $event->argumentsByName("pagefile");
     $name = $event->object->name;
 
@@ -627,8 +626,6 @@ class ImageExtra extends WireData implements Module {
     if (!empty($this->additionalFields['link'][$name])) {
       $image->set('link', $image->link);
     }
-
-    $p->save($name);
   }
 
 
