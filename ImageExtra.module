@@ -58,6 +58,11 @@ class ImageExtra extends WireData implements Module {
   );
 
   /**
+   * version breakpoint
+   */
+  const VERSION_COMPARE = 3010;
+
+  /**
    * Initialize the module - ready
    *
    * ProcessWire calls this when the module is loaded. For 'autoload' modules, this will be called
@@ -80,7 +85,11 @@ class ImageExtra extends WireData implements Module {
 
         if (wire('page')->name === 'field' || !empty($this->additionalFields)) {
           $this->addHookAfter('InputfieldFile::processInputFile', $this, 'processInputFileExtra');
-          $this->addHookBefore('InputfieldFile::processInputAddFile', $this, 'processInputAddFileExtra');
+          if ($this->isRecentVersion()) {
+            $this->addHookAfter('InputfieldFile::extractMetadata', $this, 'extractMetadataExtra');
+          } else {
+            $this->addHookBefore('InputfieldFile::processInputAddFile', $this, 'processInputAddFileExtra');
+          }
           $this->addHookBefore('InputfieldFile::fileAdded', $this, 'fileAddedExtra');
           $this->addHookAfter('Fieldtype::loadPageField', $this, 'loadPageFieldExtra');
           $this->addHookAfter('FieldtypeFile::sleepValue', $this, 'sleepExtraValue');
@@ -92,6 +101,20 @@ class ImageExtra extends WireData implements Module {
         }
       }
     }
+  }
+
+  /**
+   * Compare Version
+   *
+   * @return boolean
+   */
+  private function isRecentVersion() {
+    $version = str_replace('.', '', $this->config->version);
+
+    // if version contains only 3 digits add leading 0 for the last part
+    if (strlen($version) < 4) $version = substr_replace($version, '0', -1, 0);
+
+    return (int)$version > self::VERSION_COMPARE ? true : false;
   }
 
   /**
@@ -488,6 +511,31 @@ class ImageExtra extends WireData implements Module {
    *
    * @param HookEvent $event
    */
+  public function extractMetadataExtra(HookEvent $event) {
+    $pagefile = $event->arguments(0);
+    $metadata = $event->return;
+    $name = $event->object->name;
+
+    foreach ($this->additionalFields['other'][$name] as $add) {
+      $metadata[$add] = $pagefile->$add;
+    }
+
+    if (!empty($this->additionalFields['orientation'][$name])) {
+      $metadata['orientation'] = $pagefile->orientation;
+    }
+
+    if (!empty($this->additionalFields['link'][$name])) {
+      $metadata['link'] = $pagefile->link;
+    }
+
+    $event->return = $metadata;
+  }
+
+  /**
+   * Hook process input file add
+   *
+   * @param HookEvent $event
+   */
   public function processInputAddFileExtra(HookEvent $event) {
     $filename = $event->arguments(0);
     $value = $event->object->attributes['value'];
@@ -529,7 +577,7 @@ class ImageExtra extends WireData implements Module {
       }
       if ($rm) {
         if ($overwrite) $event->object->processInputDeleteFile($pagefile);
-        $event->object->singleFileReplacement = true;
+        $event->object->set('singleFileReplacement', true);
       }
     }
 
