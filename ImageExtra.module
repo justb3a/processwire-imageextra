@@ -60,7 +60,7 @@ class ImageExtra extends WireData implements Module {
   /**
    * version breakpoint
    */
-  const VERSION_COMPARE = 3010;
+  const VERSION_COMPARE = 9999;
 
   /**
    * Initialize the module - ready
