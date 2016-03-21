@@ -687,7 +687,7 @@ class ImageExtra extends WireData implements Module {
     $pagefile = $event->arguments(1);
     $n = $event->arguments(2);
     $changed = $event->return;
-    $languages = $this->noLang ? null : $this->wire('languages');
+    $languages = $event->object->noLang ? null : $this->wire('languages');
     $name = $event->object->name;
     $id = $name . '_' . $pagefile->hash;
 
@@ -746,8 +746,21 @@ class ImageExtra extends WireData implements Module {
       foreach ($event->return->children as $field) {
         if (in_array($field->name, array('descriptionRows', 'noLang'))) {
           $event->return->children->remove($field);
-          $fieldset->add($field);
+          $field->columnWidth = 50;
+          if ($field->name !== 'noLang') $fieldset->add($field);
         }
+      }
+
+      // show field noLang
+      if ($this->wire('languages')) {
+        $f = $this->modules->get("InputfieldCheckbox");
+        $f->attr('name', 'noLang');
+        $f->attr('value', 1);
+        $f->columnWidth = 50;
+        $f->setAttribute('checked', $event->object->noLang ? 'checked' : '');
+        $f->label = $this->_('Disable multi-language fields?');
+        $f->description = $this->_('By default, fields are multi-language when you have Language Support installed. If you want to disable multi-language fields, check this box.'); // Disable multi-language description
+        $fieldset->add($f);
       }
 
       // assign fields
@@ -906,6 +919,7 @@ class ImageExtra extends WireData implements Module {
     $value = $event->object->attributes['value'];
     $name = $value->field->name;
     $outAdditional = '';
+    $noLang = $event->object->noLang;
 
     if ($event->object instanceof InputfieldImage) {
       $data = $this->mergeData($name);
@@ -913,7 +927,7 @@ class ImageExtra extends WireData implements Module {
       if (!empty($this->additionalFields['other'])) {
         if (array_key_exists($name, $this->additionalFields['other'])) {
           foreach ($this->additionalFields['other'][$name] as $field) {
-            $outAdditional .= $this->renderInputItemField($pagefile, $id, $n, $field);
+            $outAdditional .= $this->renderInputItemField($pagefile, $id, $n, $field, $noLang);
           }
         }
       }
@@ -1025,14 +1039,15 @@ class ImageExtra extends WireData implements Module {
    * @param string $id
    * @param int $n
    * @param string $current
+   * @param boolean $noLang
    */
-  protected function renderInputItemField(Pagefile $pagefile, $id, $n, $current) {
+  protected function renderInputItemField(Pagefile $pagefile, $id, $n, $current, $noLang) {
     $out = '';
     $tabs = '';
     static $hasLangTabs = null;
 
     $userLanguage = $this->wire('user')->language;
-    $languages = $this->noLang ? null : $this->wire('languages');
+    $languages = $noLang ? null : $this->wire('languages');
 
     if (!$userLanguage || !$languages || $languages->count() < 2) {
       $numLanguages = 0;
