@@ -127,7 +127,7 @@ class ImageExtra extends WireData implements Module, ConfigurableModule {
         if (wire('page')->name === 'field' || !empty($this->additionalFields)) {
           $this->addHookAfter('InputfieldFile::processInputFile', $this, 'processInputFileExtra');
           $this->addHookBefore('InputfieldFile::processInputAddFile', $this, 'processInputAddFileExtra');
-          $this->addHookBefore('InputfieldFile::fileAdded', $this, 'fileAddedExtra');
+          $this->addHookAfter('InputfieldImage::fileAdded', $this, 'fileAddedExtra');
           $this->addHookAfter('Fieldtype::loadPageField', $this, 'loadPageFieldExtra');
           $this->addHookAfter('FieldtypeFile::sleepValue', $this, 'sleepExtraValue');
           $this->addHookAfter('FieldtypeFile::wakeupValue', $this, 'wakeupExtraValue');
