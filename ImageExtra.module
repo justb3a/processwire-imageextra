@@ -90,7 +90,7 @@ class ImageExtra extends WireData implements Module {
           } else {
             $this->addHookBefore('InputfieldFile::processInputAddFile', $this, 'processInputAddFileExtra');
           }
-          $this->addHookBefore('InputfieldFile::fileAdded', $this, 'fileAddedExtra');
+          $this->addHookBefore('InputfieldImage::fileAdded', $this, 'fileAddedExtra');
           $this->addHookAfter('Fieldtype::loadPageField', $this, 'loadPageFieldExtra');
           $this->addHookAfter('FieldtypeFile::sleepValue', $this, 'sleepExtraValue');
           $this->addHookAfter('FieldtypeFile::wakeupValue', $this, 'wakeupExtraValue');
