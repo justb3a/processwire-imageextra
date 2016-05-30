@@ -7,7 +7,7 @@
 * See README.md for usage instructions.
 *
 * @author Tabea David <td@kf-interactive.com>
-* @version 0.0.3
+* @version 1.0.0
 * @copyright Copyright (c) 2015
 * @see https://github.com/justonestep/processwire-imageextra
 * @see http://www.processwire.com
@@ -29,7 +29,7 @@ class ImageExtra extends WireData implements Module {
     return array(
       'title' => 'Image Extra',
       'summary' => 'Adds custom fields to image fields (including multi-language support)',
-      'version' => 3,
+      'version' => 100,
       'href' => 'https://github.com/justonestep/processwire-imageextra',
       'singular' => true,
       'autoload' => true,
