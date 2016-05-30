@@ -1,4 +1,4 @@
-<?php
+<?php namespace ProcessWire;
 
 /**
 *
@@ -7,7 +7,7 @@
 * See README.md for usage instructions.
 *
 * @author Tabea David <td@kf-interactive.com>
-* @version 1.0.0
+* @version 0.0.3
 * @copyright Copyright (c) 2015
 * @see https://github.com/justonestep/processwire-imageextra
 * @see http://www.processwire.com
@@ -29,7 +29,7 @@ class ImageExtra extends WireData implements Module {
     return array(
       'title' => 'Image Extra',
       'summary' => 'Adds custom fields to image fields (including multi-language support)',
-      'version' => 100,
+      'version' => 3,
       'href' => 'https://github.com/justonestep/processwire-imageextra',
       'singular' => true,
       'autoload' => true,
@@ -45,7 +45,8 @@ class ImageExtra extends WireData implements Module {
     'orientationField' => false,
     'orientationValues' => 'left,right',
     'linkField' => false,
-    'otherField' => ''
+    'otherField' => '',
+    'otherFieldSettings' => ''
   );
 
   /**
@@ -78,7 +79,7 @@ class ImageExtra extends WireData implements Module {
     if (in_array($this->page->name, array('edit', 'field', 'module', 'users')) || $backend === false) {
       $this->addHookAfter('InputfieldImage::getConfigInputfields', $this, 'addExtraFields');
       $this->addHookAfter('InputfieldImage::renderItem', $this, 'renderExtraFields');
-      $this->addHookBefore('ProcessField::executeSave', $this, 'checkTableColumns');
+      $this->addHookBefore('ProcessField::executeSave', $this, 'checkTableColumnsAndParseSettings');
 
       if (wire('page')->template->name === 'admin' && !empty($this->input->get->id) || wire('page')->template->name != 'admin') {
         $this->addCustomMethods();
@@ -94,6 +95,7 @@ class ImageExtra extends WireData implements Module {
           $this->addHookAfter('Fieldtype::loadPageField', $this, 'loadPageFieldExtra');
           $this->addHookAfter('FieldtypeFile::sleepValue', $this, 'sleepExtraValue');
           $this->addHookAfter('FieldtypeFile::wakeupValue', $this, 'wakeupExtraValue');
+          $this->addHookAfter('FieldtypeFile::formatValue', $this, 'formatExtraValue');
 
           if (isset($this->additionalFields['link'])) {
             $this->config->scripts->append($this->config->urls->InputfieldPageListSelect . 'InputfieldPageListSelect.min.js');
@@ -237,7 +239,6 @@ class ImageExtra extends WireData implements Module {
     }
 
     if (is_null($language)) {
-
       // return for current user language, or inherit from default if not available
       $user = $this->wire('user');
       $value = null;
@@ -294,7 +295,7 @@ class ImageExtra extends WireData implements Module {
     if (!is_null($language) && $language->id) {
       if (!$language->isDefault()) $name .= $language->id;
       $value = $this->wire('sanitizer')->textarea($value);
-      $pagefile->set($name, $this->wire('sanitizer')->textarea($value));
+      $pagefile->set($name, $value);
       return $pagefile;
     }
 
@@ -391,7 +392,7 @@ class ImageExtra extends WireData implements Module {
       if (!$result) return $value;
 
       $values = array();
-      while($row = $stmt->fetch(PDO::FETCH_ASSOC)) {
+      while($row = $stmt->fetch(\PDO::FETCH_ASSOC)) {
         $value = array();
         foreach ($tmpAddFields as $add) {
           $key = $fieldName . '__' . $add;
@@ -500,6 +501,33 @@ class ImageExtra extends WireData implements Module {
         foreach (array('orientation', 'link') as $add) {
           if (!empty($this->additionalFields[$add][$field->name]) && !empty($v[$add])) {
             $pagefile->$add($v[$add]);
+          }
+        }
+      }
+    }
+  }
+
+  /**
+   * Hook format extra fields
+   *
+   * @param HookEvent $event
+   */
+  public function formatExtraValue(HookEvent $event) {
+    $page = $event->arguments(0);
+    $field = $event->arguments(1);
+    $value = $event->arguments(2);
+
+    if ($field->type instanceof FieldtypeImage && $fieldSettings = $field['otherFieldSettings']) {
+      $settings = json_decode($fieldSettings);
+
+      if ($formatters = $settings->cf_textformatter) {
+        foreach ($this->additionalFields['other'][$field->name] as $otherField) {
+          $formatter = $formatters->$otherField;
+
+          foreach ($value as $v) {
+            $currentValue = $v->$otherField;
+            if ($formatter) $this->modules->get($formatter)->formatValue($page, $field, $currentValue);
+            $v->$otherField = $currentValue;
           }
         }
       }
@@ -789,8 +817,60 @@ class ImageExtra extends WireData implements Module {
         $fieldset->add($field);
       }
 
+      if (count($this->additionalFields['other'][$event->object->name])) {
+        $addFields = $this->additionalFields['other'][$event->object->name];
+        $fieldset->add($this->addSettingsTable($addFields, $data));
+      }
+
       $event->return->children->add($fieldset);
     }
+  }
+
+  private function addSettingsTable($addFields, $data) {
+    $settings = $data['otherFieldSettings'] ? json_decode($data['otherFieldSettings']) : array();
+
+    // textformatter select
+    $fTextformatter = $this->modules->get('InputfieldSelect');
+    $fTextformatter->label = $this->_('Text Formatter');
+    $textformatters = $this->modules->find("className^=Textformatter");
+    if (count($textformatters)) {
+      foreach ($textformatters as $textformatter) {
+        $info = $textformatter->getModuleInfo();
+        $fTextformatter->addOption($textformatter->className(), "$info[title]");
+      }
+    }
+
+    // inputfieldclass select
+    $fInputfieldclass = $this->modules->get('InputfieldSelect');
+    $fInputfieldclass->label = $this->_('Inputfield Type');
+    $baseClass = 'InputfieldTextarea';
+    foreach ($this->modules->find("className^=Inputfield") as $fm) {
+      if ("$fm" == $baseClass || is_subclass_of($fm->className(true), __NAMESPACE__ . "\\$baseClass")) {
+        $fInputfieldclass->addOption("$fm", str_replace("Inputfield", '', "$fm"));
+      }
+    }
+
+    // get table
+    $headline = "<h2>{$this->_('Select Textformatter and Inputfield Class')}</h2>";
+    $tableHeader = "<th>{$this->_('Custom Field')}</th><th>{$this->_('Textformatter')}</th><th>{$this->_('Inputfield Type')}</th>";
+    $field = $this->modules->get('InputfieldMarkup');
+    $customFields = '';
+    foreach ($addFields as $custom) {
+      $value = $settings->cf_textformatter && $settings->cf_textformatter->$custom ? $settings->cf_textformatter->$custom : '';
+      $fTextformatter->setAttribute('name', "cf_textformatter[$custom]");
+      $fTextformatter->attr('value', $value);
+
+      $value = $settings->cf_inputfieldclass && $settings->cf_inputfieldclass->$custom ? $settings->cf_inputfieldclass->$custom : '';
+      $fInputfieldclass->setAttribute('name', "cf_inputfieldclass[$custom]");
+      $fInputfieldclass->attr('value', $value ? $value : FieldtypeTextarea::defaultInputfieldClass);
+
+      $customFields .= '<tr><td>' . $custom . '</td><td>' . $fTextformatter->render() . '</td><td>' . $fInputfieldclass->render() . '</td></tr>';
+    }
+
+    $val = "{$headline}<table class='AdminDataTable AdminDataList'>{$tableHeader}{$customFields}</table>";
+    $field->value = $val;
+
+    return $field;
   }
 
   /**
@@ -843,6 +923,13 @@ class ImageExtra extends WireData implements Module {
         'size' => 80,
         'columnWidth' => 50,
         'notes' => $this->_('Do not use `orientation`, `link` or `caption` in this list.')
+      ),
+      'otherFieldSettings' => array(
+        'type' => 'InputfieldHidden',
+        'label' => $this->_('Add other text input field settings?'),
+        'value' => $data['otherFieldSettings'],
+        'size' => 80,
+        'columnWidth' => 50
       ),
     );
   }
@@ -965,10 +1052,19 @@ class ImageExtra extends WireData implements Module {
 
   /**
    * check table columns
+   * parse textformatter and inputfieldclass settings
    *
    * @param HookEvent $event
    */
-  public function checkTableColumns(HookEvent $event) {
+  public function checkTableColumnsAndParseSettings(HookEvent $event) {
+    // save textformatter and inputfieldclass for other fields
+    $this->input->post->otherFieldSettings = json_encode(
+      array(
+        'cf_textformatter' => $this->input->post->cf_textformatter,
+        'cf_inputfieldclass' => $this->input->post->cf_inputfieldclass
+      )
+    );
+
     $columns = array();
     foreach (self::$defaults as $add => $default) {
       if ($this->input->post->{$add}) {
