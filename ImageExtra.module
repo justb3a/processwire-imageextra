@@ -1005,7 +1005,8 @@ class ImageExtra extends WireData implements Module {
 
         if (empty($numRows)) {
           $updated = true;
-          $addColumn = "ALTER TABLE `{$table}` ADD `{$col}` text NOT NULL";
+          // use varchar to be able to provide a default value
+          $addColumn = "ALTER TABLE `{$table}` ADD `{$col}` VARCHAR(2048) DEFAULT ''";
 
           try {
             $db->exec($addColumn);
