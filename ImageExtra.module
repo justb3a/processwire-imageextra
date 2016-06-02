@@ -1,4 +1,4 @@
-<?php
+<?php namespace ProcessWire;
 
 /**
 *
@@ -8,7 +8,7 @@
 *
 * @author Tabea David <td@kf-interactive.com>
 * @version 1.0.0
-* @copyright Copyright (c) 2015
+* @copyright Copyright (c) 2016
 * @see https://github.com/justonestep/processwire-imageextra
 * @see http://www.processwire.com
 */
@@ -38,14 +38,14 @@ class ImageExtra extends WireData implements Module {
 
   /**
    * @field array default config values for field settings
-   *
    */
   protected static $defaults = array(
     'captionField' => false,
     'orientationField' => false,
     'orientationValues' => 'left,right',
     'linkField' => false,
-    'otherField' => ''
+    'otherField' => '',
+    'otherFieldSettings' => ''
   );
 
   /**
@@ -56,6 +56,11 @@ class ImageExtra extends WireData implements Module {
     'orientation' => array(),
     'link' => array()
   );
+
+  /**
+   * @field boolean whether the field has been already formatted
+   */
+  protected static $alreadyFormatted = false;
 
   /**
    * version breakpoint
@@ -78,22 +83,25 @@ class ImageExtra extends WireData implements Module {
     if (in_array($this->page->name, array('edit', 'field', 'module', 'users')) || $backend === false) {
       $this->addHookAfter('InputfieldImage::getConfigInputfields', $this, 'addExtraFields');
       $this->addHookAfter('InputfieldImage::renderItem', $this, 'renderExtraFields');
-      $this->addHookBefore('ProcessField::executeSave', $this, 'checkTableColumns');
+      $this->addHookBefore('ProcessField::executeSave', $this, 'checkTableColumnsAndParseSettings');
 
       if (wire('page')->template->name === 'admin' && !empty($this->input->get->id) || wire('page')->template->name != 'admin') {
         $this->addCustomMethods();
 
         if (wire('page')->name === 'field' || !empty($this->additionalFields)) {
           $this->addHookAfter('InputfieldFile::processInputFile', $this, 'processInputFileExtra');
+
           if ($this->isRecentVersion()) {
             $this->addHookAfter('InputfieldFile::extractMetadata', $this, 'extractMetadataExtra');
           } else {
             $this->addHookBefore('InputfieldFile::processInputAddFile', $this, 'processInputAddFileExtra');
           }
+
           $this->addHookBefore('InputfieldImage::fileAdded', $this, 'fileAddedExtra');
           $this->addHookAfter('Fieldtype::loadPageField', $this, 'loadPageFieldExtra');
           $this->addHookAfter('FieldtypeFile::sleepValue', $this, 'sleepExtraValue');
           $this->addHookAfter('FieldtypeFile::wakeupValue', $this, 'wakeupExtraValue');
+          $this->addHookAfter('FieldtypeFile::formatValue', $this, 'formatExtraValue');
 
           if (isset($this->additionalFields['link'])) {
             $this->config->scripts->append($this->config->urls->InputfieldPageListSelect . 'InputfieldPageListSelect.min.js');
@@ -237,7 +245,6 @@ class ImageExtra extends WireData implements Module {
     }
 
     if (is_null($language)) {
-
       // return for current user language, or inherit from default if not available
       $user = $this->wire('user');
       $value = null;
@@ -288,13 +295,12 @@ class ImageExtra extends WireData implements Module {
    * @param Page|Language Langage to set it for. Omit to determine automatically.
    * @param Pagefile $pagefile
    * @return this
-   *
    */
   protected function setExtra($name, $value, Page $language = null, $pagefile) {
     if (!is_null($language) && $language->id) {
       if (!$language->isDefault()) $name .= $language->id;
       $value = $this->wire('sanitizer')->textarea($value);
-      $pagefile->set($name, $this->wire('sanitizer')->textarea($value));
+      $pagefile->set($name, $value);
       return $pagefile;
     }
 
@@ -391,7 +397,7 @@ class ImageExtra extends WireData implements Module {
       if (!$result) return $value;
 
       $values = array();
-      while($row = $stmt->fetch(PDO::FETCH_ASSOC)) {
+      while($row = $stmt->fetch(\PDO::FETCH_ASSOC)) {
         $value = array();
         foreach ($tmpAddFields as $add) {
           $key = $fieldName . '__' . $add;
@@ -503,6 +509,33 @@ class ImageExtra extends WireData implements Module {
           }
         }
       }
+    }
+  }
+
+  /**
+   * Hook format extra fields
+   *
+   * @param HookEvent $event
+   */
+  public function formatExtraValue(HookEvent $event) {
+    if (!self::$alreadyFormatted) {
+      self::$alreadyFormatted = true;
+      $page = $event->arguments(0);
+      $field = $event->arguments(1);
+      $value = $event->arguments(2);
+      $settings = $this->getOtherFieldSettings($field);
+
+      if ($formatters = $settings->cf_textformatter) {
+        foreach ($value as $v) {
+          foreach ($this->additionalFields['other'][$field->name] as $otherField) {
+            $formatter = $formatters->$otherField;
+            $currentValue = $v->$otherField;
+            if ($formatter) $this->modules->get($formatter)->formatValue($page, $field, $currentValue);
+            $v->$otherField = $currentValue;
+          }
+        }
+      }
+
     }
   }
 
@@ -753,7 +786,7 @@ class ImageExtra extends WireData implements Module {
 
       // show field noLang
       if ($this->wire('languages')) {
-        $f = $this->modules->get("InputfieldCheckbox");
+        $f = $this->modules->get('InputfieldCheckbox');
         $f->attr('name', 'noLang');
         $f->attr('value', 1);
         $f->columnWidth = 50;
@@ -789,8 +822,52 @@ class ImageExtra extends WireData implements Module {
         $fieldset->add($field);
       }
 
+      if (count($this->additionalFields['other'][$event->object->name])) {
+        $addFields = $this->additionalFields['other'][$event->object->name];
+        $fieldset->add($this->addSettingsTable($addFields, $data));
+      }
+
       $event->return->children->add($fieldset);
     }
+  }
+
+  /**
+   * Add settings table for field settings
+   *
+   * @param array $addFields
+   * @param array $data
+   */
+  private function addSettingsTable($addFields, $data) {
+    $settings = $data['otherFieldSettings'] ? json_decode($data['otherFieldSettings']) : array();
+
+    // textformatter select
+    $fTextformatter = $this->modules->get('InputfieldSelect');
+    $fTextformatter->label = $this->_('Text Formatter');
+    $textformatters = $this->modules->find("className^=Textformatter");
+    if (count($textformatters)) {
+      foreach ($textformatters as $textformatter) {
+        $info = $textformatter->getModuleInfo();
+        $fTextformatter->addOption($textformatter->className(), "$info[title]");
+      }
+    }
+
+    // get table
+    $headline = "<h2>{$this->_('Select Textformatter')}</h2>";
+    $tableHeader = "<th>{$this->_('Custom Field')}</th><th>{$this->_('Textformatter')}</th>";
+    $field = $this->modules->get('InputfieldMarkup');
+    $customFields = '';
+    foreach ($addFields as $custom) {
+      $value = $settings->cf_textformatter && isset($settings->cf_textformatter->$custom) ? $settings->cf_textformatter->$custom : '';
+      $fTextformatter->setAttribute('name', "cf_textformatter[$custom]");
+      $fTextformatter->attr('value', $value);
+
+      $customFields .= '<tr><td>' . $custom . '</td><td>' . $fTextformatter->render() . '</td></tr>';
+    }
+
+    $val = "{$headline}<table class='AdminDataTable AdminDataList'>{$tableHeader}{$customFields}</table>";
+    $field->value = $val;
+
+    return $field;
   }
 
   /**
@@ -843,6 +920,13 @@ class ImageExtra extends WireData implements Module {
         'size' => 80,
         'columnWidth' => 50,
         'notes' => $this->_('Do not use `orientation`, `link` or `caption` in this list.')
+      ),
+      'otherFieldSettings' => array(
+        'type' => 'InputfieldHidden',
+        'label' => $this->_('Add other text input field settings?'),
+        'value' => $data['otherFieldSettings'],
+        'size' => 80,
+        'columnWidth' => 50
       ),
     );
   }
@@ -907,6 +991,20 @@ class ImageExtra extends WireData implements Module {
   }
 
   /**
+   * get other field settings e.g. formatter
+   *
+   * @param Field $field
+   */
+  private function getOtherFieldSettings($field) {
+    $settings = array();
+    if ($field->type instanceof FieldtypeImage && $fieldSettings = $field['otherFieldSettings']) {
+      $settings = json_decode($fieldSettings);
+    }
+
+    return $settings;
+  }
+
+  /**
    * render extra fields
    *
    * @param HookEvent $event
@@ -965,10 +1063,18 @@ class ImageExtra extends WireData implements Module {
 
   /**
    * check table columns
+   * parse textformatter and inputfieldclass settings
    *
    * @param HookEvent $event
    */
-  public function checkTableColumns(HookEvent $event) {
+  public function checkTableColumnsAndParseSettings(HookEvent $event) {
+    // save textformatter and inputfieldclass for other fields
+    $this->input->post->otherFieldSettings = json_encode(
+      array(
+        'cf_textformatter' => $this->input->post->cf_textformatter
+      )
+    );
+
     $columns = array();
     foreach (self::$defaults as $add => $default) {
       if ($this->input->post->{$add}) {
@@ -1074,7 +1180,10 @@ class ImageExtra extends WireData implements Module {
 
       $out .= "<label for='$fieldName' class='$labelClass'>$fieldLabel</label>";
       $value = $this->wire('sanitizer')->entities($language ? $pagefile->{$current}($language) : $pagefile->{$current});
-      $out .= "<input type='text' name='$fieldName' class='InputfieldMaxWidth' id='$fieldName' value='$value' />";
+
+      // $out .= "<input type='text' name='$fieldName' class='InputfieldMaxWidth' id='$fieldName' value='$value' />";
+      $out .= "<textarea id='$fieldName' class='FieldtypeTextarea InputfieldMaxWidth' name='$fieldName' rows='2'>$value</textarea>";
+
       $out .= "</div>"; // close wrapper
     }
 
