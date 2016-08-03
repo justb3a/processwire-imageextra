@@ -65,7 +65,7 @@ class ImageExtra extends WireData implements Module {
   /**
    * version breakpoint
    */
-  const VERSION_COMPARE = 9999;
+  const VERSION_COMPARE = 3029;
 
   /**
    * Initialize the module - ready
@@ -91,6 +91,7 @@ class ImageExtra extends WireData implements Module {
         if (wire('page')->name === 'field' || !empty($this->additionalFields)) {
           $this->addHookAfter('InputfieldFile::processInputFile', $this, 'processInputFileExtra');
 
+          // if it's a recent version use hook `after` instead of overwriting
           if ($this->isRecentVersion()) {
             $this->addHookAfter('InputfieldFile::extractMetadata', $this, 'extractMetadataExtra');
           } else {
@@ -122,7 +123,7 @@ class ImageExtra extends WireData implements Module {
     // if version contains only 3 digits add leading 0 for the last part
     if (strlen($version) < 4) $version = substr_replace($version, '0', -1, 0);
 
-    return (int)$version > self::VERSION_COMPARE ? true : false;
+    return (int)$version >= self::VERSION_COMPARE ? true : false;
   }
 
   /**
