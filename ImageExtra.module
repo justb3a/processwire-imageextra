@@ -91,7 +91,7 @@ class ImageExtra extends WireData implements Module {
         if (wire('page')->name === 'field' || !empty($this->additionalFields)) {
           $this->addHookAfter('InputfieldFile::processInputFile', $this, 'processInputFileExtra');
 
-          // if it's a recent version use hook `after` instead of overwriting
+          // if it's a recent version use hook after instead of overwriting
           if ($this->isRecentVersion()) {
             $this->addHookAfter('InputfieldFile::extractMetadata', $this, 'extractMetadataExtra');
           } else {
@@ -526,7 +526,7 @@ class ImageExtra extends WireData implements Module {
       $value = $event->arguments(2);
       $settings = $this->getOtherFieldSettings($field);
 
-      if ($formatters = $settings->cf_textformatter) {
+      if ($settings && $formatters = $settings->cf_textformatter) {
         foreach ($value as $v) {
           foreach ($this->additionalFields['other'][$field->name] as $otherField) {
             $formatter = $formatters->$otherField;
