@@ -862,7 +862,8 @@ class ImageExtra extends WireData implements Module {
     $field = $this->modules->get('InputfieldMarkup');
     $customFields = '';
     foreach ($addFields as $custom) {
-      $value = $settings->cf_textformatter && isset($settings->cf_textformatter->$custom) ? $settings->cf_textformatter->$custom : '';
+      $doesValueExist = isset($settings->cf_textformatter) && isset($settings->cf_textformatter->$custom);
+      $value = $doesValueExist ? $settings->cf_textformatter->$custom : '';
       $fTextformatter->setAttribute('name', "cf_textformatter[$custom]");
       $fTextformatter->attr('value', $value);
 
