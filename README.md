@@ -1,5 +1,7 @@
 # ProcessWire ImageExtra
 
+Compatibility: ProcessWire 3.x
+
 This module allows you to add additional informations to an image (for example: title, description, link, orientation and any field you may need).
 
 Some time ago I developed a module ([FieldtypeImageExtra](https://github.com/justonestep/processwire-fieldtypeimageextra)) 
