@@ -827,8 +827,10 @@ class ImageExtra extends WireData implements Module {
       $fieldset->add($field);
     }
 
-    if (count($this->additionalFields['other'][$event->object->name])) {
-      $addFields = $this->additionalFields['other'][$event->object->name];
+    $name = $event->object->name;
+    $otherFields = $this->additionalFields['other'];
+    if (isset($otherFields[$name]) && count($otherFields[$name])) {
+      $addFields = $otherFields[$name];
       $fieldset->add($this->addSettingsTable($addFields, $data));
     }
 
