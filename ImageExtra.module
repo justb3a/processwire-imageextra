@@ -85,7 +85,7 @@ class ImageExtra extends WireData implements Module {
       $this->addHookAfter('InputfieldImage::renderItem', $this, 'renderExtraFields');
       $this->addHookBefore('ProcessField::executeSave', $this, 'checkTableColumnsAndParseSettings');
 
-      if (wire('page')->template->name === 'admin' && !empty($this->input->get->id) || wire('page')->template->name != 'admin') {
+      if (wire('page')->template->name === 'admin' && $this->input->get->id || wire('page')->template->name != 'admin') {
         $this->addCustomMethods();
 
         if (wire('page')->name === 'field' || !empty($this->additionalFields)) {
@@ -252,7 +252,7 @@ class ImageExtra extends WireData implements Module {
       if ($user->language && $user->language->id) {
         $value = $event->object->get($current . $user->language);
       } else {
-        if (empty($value)) {
+        if (empty($value) && array_key_exists($current, $event->object->data)) {
           // inherit default language value
           $value = $event->object->get($current);
         }
@@ -286,7 +286,6 @@ class ImageExtra extends WireData implements Module {
 
     $event->return = $value;
   }
-
 
   /**
    * Sets custom value, optionally parsing JSON language-specific value to separate properties
@@ -529,6 +528,7 @@ class ImageExtra extends WireData implements Module {
       if ($settings && $formatters = $settings->cf_textformatter) {
         foreach ($value as $v) {
           foreach ($this->additionalFields['other'][$field->name] as $otherField) {
+            if (!array_key_exists($otherField, $formatters)) continue;
             $formatter = $formatters->$otherField;
             $currentValue = $v->$otherField;
             if ($formatter) $this->modules->get($formatter)->formatValue($page, $field, $currentValue);
@@ -709,7 +709,6 @@ class ImageExtra extends WireData implements Module {
       $image->set('link', $image->link);
     }
   }
-
 
   /**
    * Hook process input file
