@@ -63,6 +63,11 @@ class ImageExtra extends WireData implements Module {
   protected static $alreadyFormatted = false;
 
   /**
+   * @field boolean whether the language tabs module is installed
+   */
+  protected static $hasLangTabs = null;
+
+  /**
    * version breakpoint
    */
   const VERSION_COMPARE = 3029;
@@ -857,9 +862,17 @@ class ImageExtra extends WireData implements Module {
       }
     }
 
+    // inputfield for label
+    // @todo: multi language
+    /* $fLabel = $this->modules->get('InputfieldText'); */
+    $languages = $this->getLanguages();
+    $type = count($languages) > 1 ? 'InputfieldTextLanguage' : 'InputfieldText';
+    $fLabel = $this->modules->get($type);
+    $fLabel->label = $this->_('Label');
+
     // get table
-    $headline = "<h2>{$this->_('Select Textformatter')}</h2>";
-    $tableHeader = "<th>{$this->_('Custom Field')}</th><th>{$this->_('Textformatter')}</th>";
+    $headline = "<h2>{$this->_('Settings')}</h2>";
+    $tableHeader = "<th>{$this->_('Custom Field')}</th><th>{$this->_('Label')}</th><th>{$this->_('Textformatter')}</th>";
     $field = $this->modules->get('InputfieldMarkup');
     $customFields = '';
     foreach ($addFields as $custom) {
@@ -868,7 +881,7 @@ class ImageExtra extends WireData implements Module {
       $fTextformatter->setAttribute('name', "cf_textformatter[$custom]");
       $fTextformatter->attr('value', $value);
 
-      $customFields .= '<tr><td>' . $custom . '</td><td>' . $fTextformatter->render() . '</td></tr>';
+      $customFields .= '<tr><td>' . $custom . '</td><td>' . $fLabel->render() . '</td><td>' . $fTextformatter->render() . '</td></tr>';
     }
 
     $val = "{$headline}<table class='AdminDataTable AdminDataList'>{$tableHeader}{$customFields}</table>";
@@ -1146,6 +1159,27 @@ class ImageExtra extends WireData implements Module {
   }
 
   /**
+   * get available languages
+   *
+   * @param boolean $noLang
+   * @return array
+   */
+  protected function getLanguages($noLang = 0) {
+    $userLanguage = $this->wire('user')->language;
+    $languages = $noLang ? null : $this->wire('languages');
+    $numLanguages = 0;
+
+    if (!$userLanguage || !$languages || $languages->count() < 2) {
+      $languages = array(null);
+    } else {
+      $numLanguages = $languages->count();
+      if (is_null(self::$hasLangTabs)) self::$hasLangTabs = $this->wire('modules')->isInstalled('LanguageTabs');
+    }
+
+    return $languages;
+  }
+
+  /**
    * render input item field
    * for caption and other fields
    *
@@ -1158,19 +1192,8 @@ class ImageExtra extends WireData implements Module {
   protected function renderInputItemField(Pagefile $pagefile, $id, $n, $current, $noLang) {
     $out = '';
     $tabs = '';
-    static $hasLangTabs = null;
 
-    $userLanguage = $this->wire('user')->language;
-    $languages = $noLang ? null : $this->wire('languages');
-
-    if (!$userLanguage || !$languages || $languages->count() < 2) {
-      $numLanguages = 0;
-      $languages = array(null);
-    } else {
-      $numLanguages = $languages->count();
-      if (is_null($hasLangTabs)) $hasLangTabs = $this->wire('modules')->isInstalled('LanguageTabs');
-    }
-
+    $languages = $this->getLanguages($noLang);
     foreach ($languages as $language) {
       $fieldName = $current . '_' . $id;
       $fieldLabel = $this->_(ucfirst($current));
@@ -1187,14 +1210,11 @@ class ImageExtra extends WireData implements Module {
 
       $out .= "<label for='$fieldName' class='$labelClass'>$fieldLabel</label>";
       $value = $this->wire('sanitizer')->entities($language ? $pagefile->{$current}($language) : $pagefile->{$current});
-
-      // $out .= "<input type='text' name='$fieldName' class='InputfieldMaxWidth' id='$fieldName' value='$value' />";
       $out .= "<textarea id='$fieldName' class='FieldtypeTextarea InputfieldMaxWidth' name='$fieldName' rows='2'>$value</textarea>";
-
       $out .= "</div>"; // close wrapper
     }
 
-    if ($numLanguages && $hasLangTabs) {
+    if (self::$hasLangTabs) {
       $ajax = $this->wire('config')->ajax;
       $out = "<div class='hasLangTabs langTabsContainer'><div class='langTabs'><ul>$tabs</ul>$out</div></div>";
       if ($ajax) {
