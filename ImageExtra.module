@@ -988,7 +988,9 @@ class ImageExtra extends WireData implements Module {
     // deprecated, move captionField otherFields
     if (isset($data['captionField'])) {
       if ($data['captionField'] > 0) {
-        $data['otherField'] = strlen($data['otherField']) > 0 ? "caption,{$data['otherField']}" : 'caption';
+        $otherField = 'caption';
+        if (isset($data['otherField']) && strlen($data['otherField']) > 0) $otherField .= ",{$data['otherField']}";
+        $data['otherField'] = $otherField;
       }
 
       unset($data['captionField']);
