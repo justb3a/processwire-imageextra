@@ -784,7 +784,6 @@ class ImageExtra extends WireData implements Module {
     foreach ($event->return->children as $field) {
       if (in_array($field->name, array('descriptionRows', 'noLang'))) {
         $event->return->children->remove($field);
-        $field->columnWidth = 50;
         if ($field->name !== 'noLang') $fieldset->add($field);
       }
     }
@@ -1077,8 +1076,9 @@ class ImageExtra extends WireData implements Module {
     $splitOut = preg_split("/[\t]+/", $out);
     $position = count($splitOut) - 2;
 
-    // add label for description, change label for tags
-    if (!is_null($this->languages)) {
+    // add label for description
+    // only if descriptionRows > 0 and multi-language site
+    if ($data['descriptionRows'] && !is_null($this->languages)) {
       $label = "<strong>{$this->_('Description')}</strong>";
       $out = preg_replace('/(<div\sclass=\'InputfieldImageEdit__core\'>)/', "$1{$label}", $out, 1);
     }
@@ -1198,6 +1198,19 @@ class ImageExtra extends WireData implements Module {
   }
 
   /**
+   * check whether a field has a textformatter assigned
+   *
+   * @param array $settings
+   * @param string $fieldName
+   * @return boolean
+   */
+  protected function hasFieldTextformatter($settings, $fieldName) {
+    $check = isset($settings->cf_textformatter) && isset($settings->cf_textformatter->$fieldName) && $settings->cf_textformatter->$fieldName;
+
+    return $check ? true : false;
+  }
+
+  /**
    * render input item field
    * for other fields
    *
@@ -1212,14 +1225,20 @@ class ImageExtra extends WireData implements Module {
     $languages = $this->getLanguages($noLang);
     $fieldName = $current . '_' . $id;
 
-    $field = $this->modules->get('InputfieldTextarea');
+    // if no textformatter is set, use InputfieldText
+    if ($this->hasFieldTextformatter($settings, $current)) {
+      $field = $this->modules->get('InputfieldTextarea');
+      $field->set('rows', '2');
+    } else {
+      $field = $this->modules->get('InputfieldText');
+    }
+
     $field->label = $this->_(ucfirst($current));
 
     if (count($languages) > 1) $field->useLanguages = true;
     $field->setAttribute('name', $fieldName);
     $value = $this->wire('sanitizer')->entities($pagefile->{$current});
     $field->set('value', $value);
-    $field->set('rows', '2');
 
     foreach ($languages as $language) {
       if (is_null($language) || $language->isDefault()) continue;
