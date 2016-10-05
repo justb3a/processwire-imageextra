@@ -7,7 +7,7 @@
 * See README.md for usage instructions.
 *
 * @author Tabea David <td@kf-interactive.com>
-* @version 1.0.0
+* @version 1.0.1
 * @copyright Copyright (c) 2016
 * @see https://github.com/justonestep/processwire-imageextra
 * @see http://www.processwire.com
@@ -29,7 +29,7 @@ class ImageExtra extends WireData implements Module {
     return array(
       'title' => 'Image Extra',
       'summary' => 'Adds custom fields to image fields (including multi-language support)',
-      'version' => 100,
+      'version' => 101,
       'href' => 'https://github.com/justonestep/processwire-imageextra',
       'singular' => true,
       'autoload' => true,
@@ -40,7 +40,6 @@ class ImageExtra extends WireData implements Module {
    * @field array default config values for field settings
    */
   protected static $defaults = array(
-    'captionField' => false,
     'orientationField' => false,
     'orientationValues' => 'left,right',
     'linkField' => false,
@@ -61,6 +60,11 @@ class ImageExtra extends WireData implements Module {
    * @field boolean whether the field has been already formatted
    */
   protected static $alreadyFormatted = false;
+
+  /**
+   * @field boolean whether the language tabs module is installed
+   */
+  protected static $hasLangTabs = null;
 
   /**
    * version breakpoint
@@ -333,12 +337,7 @@ class ImageExtra extends WireData implements Module {
       $languages = $this->wire('languages');
       $language = $this->wire('user')->language;
       $value = $this->wire('sanitizer')->textarea($value);
-
-      if ($languages && $language && !$language->isDefault()) {
-        $pagefile->set($name . $language, $value);
-      } else {
-        $pagefile->set($name, $value);
-      }
+      $pagefile->set($name, $value);
     }
 
     return $pagefile;
@@ -738,11 +737,12 @@ class ImageExtra extends WireData implements Module {
       }
     }
 
-    foreach ($combine as $key) {
-      if (isset($input[$key . '_' . $id])) {
-        $value = trim($input[$key . '_' . $id]);
+    foreach ($combine as $add) {
+      $key = $add . '_' . $id;
+      if (isset($input[$key])) {
+        $value = trim($input[$key]);
         if ($value != $pagefile->$key) {
-          $pagefile->$key = $value;
+          $pagefile->$add = $value;
           $changed = true;
         }
       }
@@ -751,7 +751,7 @@ class ImageExtra extends WireData implements Module {
     // multi-language additional fields
     if ($languages) foreach($languages as $language) {
       foreach ($this->additionalFields['other'][$fieldName] as $add) {
-        $key = $language->isDefault() ? $add . '_' . $id : "$add{$language->id}_$id";
+        $key = $language->isDefault() ? $add . '_' . $id : "{$add}_{$id}__{$language->id}";
         if (!isset($input[$key])) continue;
         $value = trim($input[$key]);
         if ($value != $pagefile->{$add}($language)) {
@@ -857,22 +857,51 @@ class ImageExtra extends WireData implements Module {
       }
     }
 
+    // inputfield for label text (multi-lingual)
+    $languages = $this->getLanguages(array_key_exists('noLang', $data) ? $data['noLang'] : 0);
+    $fLabel = $this->modules->get('InputfieldText');
+    $fLabel->label = $this->_('Custom Label');
+
     // get table
-    $headline = "<h2>{$this->_('Select Textformatter')}</h2>";
-    $tableHeader = "<th>{$this->_('Custom Field')}</th><th>{$this->_('Textformatter')}</th>";
-    $field = $this->modules->get('InputfieldMarkup');
-    $customFields = '';
+    $table = $this->modules->get('MarkupAdminDataTable');
+    $table->setSortable(true);
+    $table->setEncodeEntities(false);
+    $table->headerRow(array(
+      $this->_('Custom Field'),
+      $this->_('Custom Label'),
+      $this->_('Textformatter')
+    ));
+
     foreach ($addFields as $custom) {
+      if (count($languages) > 1) $fLabel->useLanguages = true;
+      $fLabel->setAttribute('name', "cf_label__{$custom}");
+      $doesValueExist = isset($settings->cf_label) && isset($settings->cf_label->{"cf_label__$custom"});
+      $value = $doesValueExist ? $settings->cf_label->{"cf_label__$custom"} : '';
+      $fLabel->set('value', $value);
+
+      foreach ($languages as $language) {
+        if (is_null($language) || $language->isDefault()) continue;
+        $customLang = $custom .  '__' . $language->id;
+        $doesValueExist = isset($settings->cf_label) && isset($settings->cf_label->{"cf_label__$customLang"});
+        $value = $doesValueExist ? $settings->cf_label->{"cf_label__$customLang"} : '';
+        $fLabel->set('value' . $language->id, $value);
+      }
+
       $doesValueExist = isset($settings->cf_textformatter) && isset($settings->cf_textformatter->$custom);
       $value = $doesValueExist ? $settings->cf_textformatter->$custom : '';
       $fTextformatter->setAttribute('name', "cf_textformatter[$custom]");
       $fTextformatter->attr('value', $value);
 
-      $customFields .= '<tr><td>' . $custom . '</td><td>' . $fTextformatter->render() . '</td></tr>';
+      $table->row(array(
+        $custom,
+        $fLabel->render(),
+        $fTextformatter->render()
+      ));
     }
 
-    $val = "{$headline}<table class='AdminDataTable AdminDataList'>{$tableHeader}{$customFields}</table>";
-    $field->value = $val;
+    // wrap inside InputfieldMarkup
+    $field = $this->modules->get('InputfieldMarkup');
+    $field->value = '<div class="InputfieldHeader">' . $this->_('Additional Settings') . '</div><div class="InputfieldContent">' . $table->render() . '</div>';
 
     return $field;
   }
@@ -884,14 +913,6 @@ class ImageExtra extends WireData implements Module {
    */
   public function getExtraFields($data) {
     return array(
-      'captionField' => array(
-        'type' => 'InputfieldCheckbox',
-        'label' => $this->_('Add caption field?'),
-        'description' => $this->_('Enable Caption Input Field') . PHP_EOL .
-                         $this->_('(activate the checkbox to enable field `caption`)'),
-        'checked' => empty($data['captionField']) ? '' : 'checked',
-        'columnWidth' => 50
-      ),
       'orientationField' => array(
         'type' => 'InputfieldCheckbox',
         'label' => $this->_('Add orientation field?'),
@@ -926,7 +947,7 @@ class ImageExtra extends WireData implements Module {
         'value' => $data['otherField'],
         'size' => 80,
         'columnWidth' => 50,
-        'notes' => $this->_('Do not use `orientation`, `link` or `caption` in this list.')
+        'notes' => $this->_('Do not use `orientation` or `link` in this list.')
       ),
       'otherFieldSettings' => array(
         'type' => 'InputfieldHidden',
@@ -965,10 +986,15 @@ class ImageExtra extends WireData implements Module {
     }
 
     // check caption field
+    // deprecated, move captionField otherFields
     if (isset($data['captionField'])) {
       if ($data['captionField'] > 0) {
-        $this->additionalFields['other'][$name]['caption'] = 'caption';
+        $data['otherField'] = strlen($data['otherField']) > 0 ? "caption,{$data['otherField']}" : 'caption';
       }
+
+      unset($data['captionField']);
+      $field->data = $data;
+      $field->save();
     }
 
     // check other fields
@@ -1020,6 +1046,7 @@ class ImageExtra extends WireData implements Module {
     if (!$event->object instanceof InputfieldImage) return;
 
     $pagefile = $event->arguments[0];
+
     $id = $event->arguments[1];
     $n = $event->arguments[2];
     $out = $event->return;
@@ -1027,13 +1054,14 @@ class ImageExtra extends WireData implements Module {
     $name = $value->field->name;
     $outAdditional = '';
     $noLang = $event->object->noLang;
+    $settings = $this->getOtherFieldSettings($value->field);
 
     $data = $this->mergeData($name);
 
     if (!empty($this->additionalFields['other'])) {
       if (array_key_exists($name, $this->additionalFields['other'])) {
         foreach ($this->additionalFields['other'][$name] as $field) {
-          $outAdditional .= $this->renderInputItemField($pagefile, $id, $n, $field, $noLang);
+          $outAdditional .= $this->renderInputItemField($pagefile, $id, $n, $field, $noLang, $settings);
         }
       }
     }
@@ -1049,18 +1077,14 @@ class ImageExtra extends WireData implements Module {
     $splitOut = preg_split("/[\t]+/", $out);
     $position = count($splitOut) - 2;
 
-    // replace label class and label for description
+    // add label for description, change label for tags
     if (!is_null($this->languages)) {
-      foreach ($this->languages as $language) {
-        $combinedId = ($language->isDefault()) ? 'description_' . $id : 'description' . $language->id . '_' . $id;
-        $out = preg_replace('/(?<=<label\sfor=\'' . $combinedId . '\'\sclass=\').*?(?=\'[^>]*)/', 'detail', $out);
-        $out = preg_replace('/(?<=<label\sfor=\'' . $combinedId . '\'\sclass=\'detail\'>).*?(?=<)/', $this->_('Description'), $out);
-        $out = preg_replace('/(<input\stype=\'text\'\sname=\'' . $combinedId . '\')/', '$1 class=\'InputfieldMaxWidth\'', $out);
-      }
-
-      // rename description class to avoid special css style
-      $out = preg_replace('/InputfieldFileDescription/', '$1' . '2', $out);
+      $label = "<strong>{$this->_('Description')}</strong>";
+      $out = preg_replace('/(<div\sclass=\'InputfieldImageEdit__core\'>)/', "$1{$label}", $out, 1);
     }
+
+    // remove class detail, add font-weight bold
+    $out = preg_replace('/(<label\sfor\=\'tags_.*\'\s)(class\=\'detail)/', '$1style="font-weight:bold;"', $out);
 
     // insert additional output
     $out = preg_replace('/(<input\sclass=\'InputfieldFileSort\')/', $this->escape_backreference($outAdditional) . '$1', $out);
@@ -1076,9 +1100,16 @@ class ImageExtra extends WireData implements Module {
    */
   public function checkTableColumnsAndParseSettings(HookEvent $event) {
     // save textformatter and inputfieldclass for other fields
+    $cfLabels = array();
+    $cfLabel = 'cf_label__';
+    foreach ($this->input->post as $key => $val) {
+      if (substr($key, 0, strlen($cfLabel)) === $cfLabel) $cfLabels[$key] = $val;
+    }
+
     $this->input->post->otherFieldSettings = json_encode(
       array(
-        'cf_textformatter' => $this->input->post->cf_textformatter
+        'cf_textformatter' => $this->input->post->cf_textformatter,
+        'cf_label' => $cfLabels
       )
     );
 
@@ -1146,70 +1177,64 @@ class ImageExtra extends WireData implements Module {
   }
 
   /**
+   * get available languages
+   *
+   * @param boolean $noLang
+   * @return array
+   */
+  protected function getLanguages($noLang = 0) {
+    $userLanguage = $this->wire('user')->language;
+    $languages = $noLang ? null : $this->wire('languages');
+    $numLanguages = 0;
+
+    if (!$userLanguage || !$languages || $languages->count() < 2) {
+      $languages = array(null);
+    } else {
+      $numLanguages = $languages->count();
+      if (is_null(self::$hasLangTabs)) self::$hasLangTabs = $this->wire('modules')->isInstalled('LanguageTabs');
+    }
+
+    return $languages;
+  }
+
+  /**
    * render input item field
-   * for caption and other fields
+   * for other fields
    *
    * @param Pagefile $pagefile
    * @param string $id
    * @param int $n
    * @param string $current
    * @param boolean $noLang
+   * @param array $settings
    */
-  protected function renderInputItemField(Pagefile $pagefile, $id, $n, $current, $noLang) {
-    $out = '';
-    $tabs = '';
-    static $hasLangTabs = null;
+  protected function renderInputItemField(Pagefile $pagefile, $id, $n, $current, $noLang, $settings) {
+    $languages = $this->getLanguages($noLang);
+    $fieldName = $current . '_' . $id;
 
-    $userLanguage = $this->wire('user')->language;
-    $languages = $noLang ? null : $this->wire('languages');
+    $field = $this->modules->get('InputfieldTextarea');
+    $field->label = $this->_(ucfirst($current));
 
-    if (!$userLanguage || !$languages || $languages->count() < 2) {
-      $numLanguages = 0;
-      $languages = array(null);
-    } else {
-      $numLanguages = $languages->count();
-      if (is_null($hasLangTabs)) $hasLangTabs = $this->wire('modules')->isInstalled('LanguageTabs');
-    }
+    if (count($languages) > 1) $field->useLanguages = true;
+    $field->setAttribute('name', $fieldName);
+    $value = $this->wire('sanitizer')->entities($pagefile->{$current});
+    $field->set('value', $value);
+    $field->set('rows', '2');
 
     foreach ($languages as $language) {
-      $fieldName = $current . '_' . $id;
-      $fieldLabel = $this->_(ucfirst($current));
-      $labelClass = "detail";
-
-      if ($language) {
-        if (!$language->isDefault()) $fieldName = $current . $language->id . '_' . $id;
-        $tabID = "langTab_{$id}__$language";
-        $tabs .= "<li><a href='#$tabID'>" . $language->get('title|name') . "</a></li>";
-        $out .= "<div class='InputfieldFile" . ucfirst($current) . " LanguageSupport' data-language='$language' id='$tabID'>"; // open wrapper
-      } else {
-        $out .= "<div class='InputfieldFile" . ucfirst($current) . "'>"; // open wrapper
-      }
-
-      $out .= "<label for='$fieldName' class='$labelClass'>$fieldLabel</label>";
+      if (is_null($language) || $language->isDefault()) continue;
       $value = $this->wire('sanitizer')->entities($language ? $pagefile->{$current}($language) : $pagefile->{$current});
-
-      // $out .= "<input type='text' name='$fieldName' class='InputfieldMaxWidth' id='$fieldName' value='$value' />";
-      $out .= "<textarea id='$fieldName' class='FieldtypeTextarea InputfieldMaxWidth' name='$fieldName' rows='2'>$value</textarea>";
-
-      $out .= "</div>"; // close wrapper
+      $field->set('value' . $language->id, $value);
     }
 
-    if ($numLanguages && $hasLangTabs) {
-      $ajax = $this->wire('config')->ajax;
-      $out = "<div class='hasLangTabs langTabsContainer'><div class='langTabs'><ul>$tabs</ul>$out</div></div>";
-      if ($ajax) {
-        $out .= "<script>setupLanguageTabs($('.InputfieldContent'));</script>";
-        $out .= '<script>$(".InputfieldPageListSelectData").each(function() { InputfieldPageListSelect.init($(this)); });</script>';
-      }
-    }
-
-    if ($this->useTags) {
-      $tags = $this->wire('sanitizer')->entities($pagefile->tags);
-      $out .= "<span class='InputfieldFileTags'>" .
-        "<label for='tags_$id' class='detail'>{$this->tagsFieldLabel}</label>" .
-        "<input type='text' name='tags_$id' id='tags_$id' value='$tags' />" .
-        "</span>";
-    }
+    // LABEL depends on USER LANGUAGE
+    $userLanguage = $this->user->language;
+    $labelFallback = ucfirst($current);
+    $labelDefault = isset($settings->cf_label) && isset($settings->cf_label->{"cf_label__$current"}) ? $settings->cf_label->{"cf_label__$current"} : '';
+    $custom = is_null($userLanguage) || $userLanguage->isDefault() ? $current : $current . '__' . $userLanguage->id;
+    $labelPerLanguage = isset($settings->cf_label) && isset($settings->cf_label->{"cf_label__$custom"}) ? $settings->cf_label->{"cf_label__$custom"} : '';
+    $label = $labelPerLanguage ? $labelPerLanguage : ($labelDefault ? $labelDefault : $labelFallback);
+    $out = "<strong>{$label}</strong>{$field->render()}";
 
     return $out;
   }
@@ -1234,9 +1259,16 @@ class ImageExtra extends WireData implements Module {
 
     $out = "<hr>" .
       "<div class='InputfieldContent'>" .
-      "<label for='$fieldName'>" . ucfirst($current) . "</label>" .
-      "<select name='$fieldName' size='1'>" . $options . "</select>" .
-      "</div>";
+      "<label for='$fieldName' style='font-weight:bold;'>" . ucfirst($current) . "</label>" .
+      "<select id='$fieldName' name='$fieldName' size='1'>" . $options . "</select>" .
+      "</div>" .
+      "<script type='text/javascript'>
+      $('#$fieldName').on('focus, click', () => {
+        $('#$fieldName').closest('.gridImages').sortable('disable'); // disable sortable on focus
+      }).on('blur', () => {
+        $('#$fieldName').closest('.gridImages').sortable('enable'); // enable sortable on blur
+      });
+      </script>";
 
     return $out;
   }
@@ -1257,7 +1289,7 @@ class ImageExtra extends WireData implements Module {
     $field->columnWidth = 50;
     $field->attr('value', (int)$pagefile->link);
 
-    return "<hr><div class='InputfieldContent'><label for='$fieldName'>{$field->startLabel}</label>" . $field->render() . "</div>";
+    return "<hr><div class='InputfieldContent'><label for='$fieldName' style='font-weight:bold;'>{$field->startLabel}</label>" . $field->render() . "</div>";
   }
 
 }
