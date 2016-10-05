@@ -337,12 +337,7 @@ class ImageExtra extends WireData implements Module {
       $languages = $this->wire('languages');
       $language = $this->wire('user')->language;
       $value = $this->wire('sanitizer')->textarea($value);
-
-      if ($languages && $language && !$language->isDefault()) {
-        $pagefile->set($name . $language, $value);
-      } else {
-        $pagefile->set($name, $value);
-      }
+      $pagefile->set($name, $value);
     }
 
     return $pagefile;
@@ -742,11 +737,12 @@ class ImageExtra extends WireData implements Module {
       }
     }
 
-    foreach ($combine as $key) {
-      if (isset($input[$key . '_' . $id])) {
-        $value = trim($input[$key . '_' . $id]);
+    foreach ($combine as $add) {
+      $key = $add . '_' . $id;
+      if (isset($input[$key])) {
+        $value = trim($input[$key]);
         if ($value != $pagefile->$key) {
-          $pagefile->$key = $value;
+          $pagefile->$add = $value;
           $changed = true;
         }
       }
@@ -755,7 +751,7 @@ class ImageExtra extends WireData implements Module {
     // multi-language additional fields
     if ($languages) foreach($languages as $language) {
       foreach ($this->additionalFields['other'][$fieldName] as $add) {
-        $key = $language->isDefault() ? $add . '_' . $id : "$add{$language->id}_$id";
+        $key = $language->isDefault() ? $add . '_' . $id : "{$add}_{$id}__{$language->id}";
         if (!isset($input[$key])) continue;
         $value = trim($input[$key]);
         if ($value != $pagefile->{$add}($language)) {
@@ -1050,6 +1046,7 @@ class ImageExtra extends WireData implements Module {
     if (!$event->object instanceof InputfieldImage) return;
 
     $pagefile = $event->arguments[0];
+
     $id = $event->arguments[1];
     $n = $event->arguments[2];
     $out = $event->return;
@@ -1080,18 +1077,14 @@ class ImageExtra extends WireData implements Module {
     $splitOut = preg_split("/[\t]+/", $out);
     $position = count($splitOut) - 2;
 
-    // replace label class and label for description
+    // add label for description, change label for tags
     if (!is_null($this->languages)) {
-      foreach ($this->languages as $language) {
-        $combinedId = ($language->isDefault()) ? 'description_' . $id : 'description' . $language->id . '_' . $id;
-        $out = preg_replace('/(?<=<label\sfor=\'' . $combinedId . '\'\sclass=\').*?(?=\'[^>]*)/', 'detail', $out);
-        $out = preg_replace('/(?<=<label\sfor=\'' . $combinedId . '\'\sclass=\'detail\'>).*?(?=<)/', $this->_('Description'), $out);
-        $out = preg_replace('/(<input\stype=\'text\'\sname=\'' . $combinedId . '\')/', '$1 class=\'InputfieldMaxWidth\'', $out);
-      }
-
-      // rename description class to avoid special css style
-      $out = preg_replace('/InputfieldFileDescription/', '$1' . '2', $out);
+      $label = "<strong>{$this->_('Description')}</strong>";
+      $out = preg_replace('/(<div\sclass=\'InputfieldImageEdit__core\'>)/', "$1{$label}", $out, 1);
     }
+
+    // remove class detail, add font-weight bold
+    $out = preg_replace('/(<label\sfor\=\'tags_.*\'\s)(class\=\'detail)/', '$1style="font-weight:bold;"', $out);
 
     // insert additional output
     $out = preg_replace('/(<input\sclass=\'InputfieldFileSort\')/', $this->escape_backreference($outAdditional) . '$1', $out);
@@ -1216,8 +1209,6 @@ class ImageExtra extends WireData implements Module {
    * @param array $settings
    */
   protected function renderInputItemField(Pagefile $pagefile, $id, $n, $current, $noLang, $settings) {
-    $out = '';
-    $tabs = '';
     $languages = $this->getLanguages($noLang);
     $fieldName = $current . '_' . $id;
 
@@ -1244,21 +1235,7 @@ class ImageExtra extends WireData implements Module {
     $custom = $userLanguage->isDefault() ? $current : $current . '__' . $userLanguage->id;
     $labelPerLanguage = $settings->cf_label->{"cf_label__$custom"};
     $label = $labelPerLanguage ? $labelPerLanguage : ($labelDefault ? $labelDefault : $labelFallback);
-    $out .= "<strong>{$label}</strong>{$field->render()}";
-
-    /* @todo: tags */
-    /* @todo: description */
-    /* @todo: save extra fields */
-
-    /* --- */
-
-    /* if ($this->useTags) { */
-    /*   $tags = $this->wire('sanitizer')->entities($pagefile->tags); */
-    /*   $out .= "<span class='InputfieldFileTags'>" . */
-    /*     "<label for='tags_$id' class='detail'>{$this->tagsFieldLabel}</label>" . */
-    /*     "<input type='text' name='tags_$id' id='tags_$id' value='$tags' />" . */
-    /*     "</span>"; */
-    /* } */
+    $out = "<strong>{$label}</strong>{$field->render()}";
 
     return $out;
   }
@@ -1283,9 +1260,16 @@ class ImageExtra extends WireData implements Module {
 
     $out = "<hr>" .
       "<div class='InputfieldContent'>" .
-      "<label for='$fieldName'>" . ucfirst($current) . "</label>" .
-      "<select name='$fieldName' size='1'>" . $options . "</select>" .
-      "</div>";
+      "<label for='$fieldName' style='font-weight:bold;'>" . ucfirst($current) . "</label>" .
+      "<select id='$fieldName' name='$fieldName' size='1'>" . $options . "</select>" .
+      "</div>" .
+      "<script type='text/javascript'>
+      $('#$fieldName').on('focus, click', () => {
+        $('#$fieldName').closest('.gridImages').sortable('disable'); // disable sortable on focus
+      }).on('blur', () => {
+        $('#$fieldName').closest('.gridImages').sortable('enable'); // enable sortable on blur
+      });
+      </script>";
 
     return $out;
   }
@@ -1306,7 +1290,7 @@ class ImageExtra extends WireData implements Module {
     $field->columnWidth = 50;
     $field->attr('value', (int)$pagefile->link);
 
-    return "<hr><div class='InputfieldContent'><label for='$fieldName'>{$field->startLabel}</label>" . $field->render() . "</div>";
+    return "<hr><div class='InputfieldContent'><label for='$fieldName' style='font-weight:bold;'>{$field->startLabel}</label>" . $field->render() . "</div>";
   }
 
 }
