@@ -7,7 +7,7 @@
 * See README.md for usage instructions.
 *
 * @author Tabea David <td@kf-interactive.com>
-* @version 1.0.0
+* @version 1.0.1
 * @copyright Copyright (c) 2016
 * @see https://github.com/justonestep/processwire-imageextra
 * @see http://www.processwire.com
@@ -29,7 +29,7 @@ class ImageExtra extends WireData implements Module {
     return array(
       'title' => 'Image Extra',
       'summary' => 'Adds custom fields to image fields (including multi-language support)',
-      'version' => 100,
+      'version' => 101,
       'href' => 'https://github.com/justonestep/processwire-imageextra',
       'singular' => true,
       'autoload' => true,
@@ -858,7 +858,7 @@ class ImageExtra extends WireData implements Module {
     }
 
     // inputfield for label text (multi-lingual)
-    $languages = $this->getLanguages($data['noLang']);
+    $languages = $this->getLanguages(array_key_exists('noLang', $data) ? $data['noLang'] : 0);
     $fLabel = $this->modules->get('InputfieldText');
     $fLabel->label = $this->_('Custom Label');
 
@@ -880,7 +880,7 @@ class ImageExtra extends WireData implements Module {
       $fLabel->set('value', $value);
 
       foreach ($languages as $language) {
-        if ($language->isDefault()) continue;
+        if (is_null($language) || $language->isDefault()) continue;
         $customLang = $custom .  '__' . $language->id;
         $doesValueExist = isset($settings->cf_label) && isset($settings->cf_label->{"cf_label__$customLang"});
         $value = $doesValueExist ? $settings->cf_label->{"cf_label__$customLang"} : '';
@@ -946,7 +946,7 @@ class ImageExtra extends WireData implements Module {
                          $this->_('(comma-separated list)'),
         'value' => $data['otherField'],
         'size' => 80,
-        'columnWidth' => 100,
+        'columnWidth' => 50,
         'notes' => $this->_('Do not use `orientation` or `link` in this list.')
       ),
       'otherFieldSettings' => array(
@@ -1222,18 +1222,17 @@ class ImageExtra extends WireData implements Module {
     $field->set('rows', '2');
 
     foreach ($languages as $language) {
-      if ($language->isDefault()) continue;
+      if (is_null($language) || $language->isDefault()) continue;
       $value = $this->wire('sanitizer')->entities($language ? $pagefile->{$current}($language) : $pagefile->{$current});
       $field->set('value' . $language->id, $value);
     }
 
     // LABEL depends on USER LANGUAGE
-    /* @todo: check for settings, prevent undefined index */
     $userLanguage = $this->user->language;
     $labelFallback = ucfirst($current);
-    $labelDefault = $settings->cf_label->{"cf_label__$current"};
-    $custom = $userLanguage->isDefault() ? $current : $current . '__' . $userLanguage->id;
-    $labelPerLanguage = $settings->cf_label->{"cf_label__$custom"};
+    $labelDefault = isset($settings->cf_label) && isset($settings->cf_label->{"cf_label__$current"}) ? $settings->cf_label->{"cf_label__$current"} : '';
+    $custom = is_null($userLanguage) || $userLanguage->isDefault() ? $current : $current . '__' . $userLanguage->id;
+    $labelPerLanguage = isset($settings->cf_label) && isset($settings->cf_label->{"cf_label__$custom"}) ? $settings->cf_label->{"cf_label__$custom"} : '';
     $label = $labelPerLanguage ? $labelPerLanguage : ($labelDefault ? $labelDefault : $labelFallback);
     $out = "<strong>{$label}</strong>{$field->render()}";
 
