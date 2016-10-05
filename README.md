@@ -15,7 +15,6 @@ The following fields are available by default:
 
 - **description** - image description (core)
 - **disable multi language description**
-- **caption** - image caption to use for title/alt tag or/and caption, if empty
 - **orientation** - image orientation
 - **orientation values** - values to use as class names or identifiers for different image orientations
 - **link** - image link to internal pages
@@ -23,7 +22,7 @@ The following fields are available by default:
 
 For each of the activated custom fields an own column in the specific table will be created.  
 As soon as you added any custom field(s), a table containing all fields appears below.
-You can set here a textformatter (e.g. Markdown, Paragraph Stripper, ..) for each field - if you want to. The textformatters have to be installed before.
+You can set here a textformatter (e.g. Markdown, Paragraph Stripper, ..) as well as a label text (multi-language) for each field - if you want to. The textformatters have to be installed before.
 
 **Caution:** Just removing a custom field will not erase it, due to data persistence. If you really don't need it anymore you have to delete the column manually.
  
