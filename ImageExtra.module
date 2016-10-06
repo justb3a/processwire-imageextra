@@ -1082,14 +1082,14 @@ class ImageExtra extends WireData implements Module {
     // only if descriptionRows > 0 and multi-language site
     if ($data['descriptionRows'] && !is_null($this->languages)) {
       $label = "<strong>{$this->_('Description')}</strong>";
-      $out = preg_replace('/(<div\sclass=\'InputfieldImageEdit__core\'>)/', "$1{$label}", $out, 1);
+      $out = preg_replace('/(<div\sclass=["\']InputfieldImageEdit__core["\']>)/', "$1{$label}", $out, 1);
     }
 
     // remove class detail, add font-weight bold
-    $out = preg_replace('/(<label\sfor\=\'tags_.*\'\s)(class\=\'detail)/', '$1style="font-weight:bold;"', $out);
+    $out = preg_replace('/(<label\sfor\=["\']tags_.*["\']\s)(class\=["\']detail)/', '$1style="font-weight:bold;"', $out);
 
     // insert additional output
-    $out = preg_replace('/(<input\sclass=\'InputfieldFileSort\')/', $this->escape_backreference($outAdditional) . '$1', $out);
+    $out = preg_replace('/(<input\sclass=["\']InputfieldFileSort["\'])/', $this->escape_backreference($outAdditional) . '$1', $out);
 
     $event->return = $out;
   }
