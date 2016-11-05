@@ -1133,7 +1133,7 @@ class ImageExtra extends WireData implements Module {
     }
 
     $db = wire('database');
-    $table = $db->escapeTable('field_' . $this->input->post->name);
+    $table = $db->escapeTable('field_' . strtolower($this->input->post->name));
     $updated = false;
 
     if (!empty($columns)) {
