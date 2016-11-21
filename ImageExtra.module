@@ -1239,7 +1239,7 @@ class ImageExtra extends WireData implements Module {
 
     if (count($languages) > 1) $field->useLanguages = true;
     $field->setAttribute('name', $fieldName);
-    $value = $this->wire('sanitizer')->entities($pagefile->{$current});
+    $value = $this->wire('sanitizer')->textarea($pagefile->{$current});
     $field->set('value', $value);
 
     foreach ($languages as $language) {
