@@ -741,7 +741,7 @@ class ImageExtra extends WireData implements Module {
       $key = $add . '_' . $id;
       if (isset($input[$key])) {
         $value = trim($input[$key]);
-        if ($value != $pagefile->$key) {
+        if ($value !== $pagefile->$key) {
           $pagefile->$add = $value;
           $changed = true;
         }
