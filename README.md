@@ -39,3 +39,18 @@ echo $image->caption;
 echo $image->location;
 echo $pages->get($image->link)->url;
 ```
+
+## Setting the values
+
+From the API side you can set the values like this:
+
+```php
+$page->setOutputFormatting(false);
+$page->images->trackChange('title');
+$image = $page->images->getRandom(); // or whatever image you want
+$image->title = 'Title in default language';
+$image->title($languages->get('fi'), 'Title in Finish');
+$image->title($languages->get('de'), 'Title in German');
+$page->save();
+$page->setOutputFormatting(true);
+```
