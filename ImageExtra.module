@@ -7,8 +7,8 @@
 * See README.md for usage instructions.
 *
 * @author Tabea David <td@kf-interactive.com>
-* @version 1.0.1
-* @copyright Copyright (c) 2016
+* @version 1.0.2
+* @copyright Copyright (c) 2017
 * @see https://github.com/justonestep/processwire-imageextra
 * @see http://www.processwire.com
 */
@@ -29,7 +29,7 @@ class ImageExtra extends WireData implements Module {
     return array(
       'title' => 'Image Extra',
       'summary' => 'Adds custom fields to image fields (including multi-language support)',
-      'version' => 101,
+      'version' => 102,
       'href' => 'https://github.com/justonestep/processwire-imageextra',
       'singular' => true,
       'autoload' => true,
@@ -54,6 +54,14 @@ class ImageExtra extends WireData implements Module {
     'other' => array(),
     'orientation' => array(),
     'link' => array()
+  );
+
+  /**
+   * sanitizer default options
+   * $options that may be provided to the text() and textarea() functions
+   */
+  protected static $options = array(
+    'stripTags' => false // strip markup tags
   );
 
   /**
@@ -303,7 +311,7 @@ class ImageExtra extends WireData implements Module {
   protected function setExtra($name, $value, Page $language = null, $pagefile) {
     if (!is_null($language) && $language->id) {
       if (!$language->isDefault()) $name .= $language->id;
-      $value = $this->wire('sanitizer')->textarea($value);
+      $value = $this->wire('sanitizer')->textarea($value, self::$options);
       $pagefile->set($name, $value);
       return $pagefile;
     }
@@ -323,7 +331,7 @@ class ImageExtra extends WireData implements Module {
         // first item is always default language. this ensures that this will still
         // work even if language support is later uninstalled.
         $item = $n > 0 ? $name . $id : $name;
-        $value = $this->wire('sanitizer')->textarea($v);
+        $value = $this->wire('sanitizer')->textarea($v, self::$options);
 
         if ($n > 0) {
           $pagefile->set($item, $value);
@@ -336,7 +344,7 @@ class ImageExtra extends WireData implements Module {
       // no JSON values so assume regular language
       $languages = $this->wire('languages');
       $language = $this->wire('user')->language;
-      $value = $this->wire('sanitizer')->textarea($value);
+      $value = $this->wire('sanitizer')->textarea($value, self::$options);
       $pagefile->set($name, $value);
     }
 
@@ -693,7 +701,7 @@ class ImageExtra extends WireData implements Module {
    * @param HookEvent $event
    */
   public function fileAddedExtra(HookEvent $event) {
-    $image = $event->argumentsByName("pagefile");
+    $image = $event->argumentsByName('pagefile');
     $name = $event->object->name;
 
     foreach ($this->additionalFields['other'][$name] as $add) {
@@ -1239,12 +1247,13 @@ class ImageExtra extends WireData implements Module {
 
     if (count($languages) > 1) $field->useLanguages = true;
     $field->setAttribute('name', $fieldName);
-    $value = $this->wire('sanitizer')->textarea($pagefile->{$current});
+    $value = $this->wire('sanitizer')->textarea($pagefile->{$current}, self::$options);
     $field->set('value', $value);
 
     foreach ($languages as $language) {
       if (is_null($language) || $language->isDefault()) continue;
-      $value = $this->wire('sanitizer')->entities($language ? $pagefile->{$current}($language) : $pagefile->{$current});
+      $v = $language ? $pagefile->{$current}($language) : $pagefile->{$current};
+      $value = $this->wire('sanitizer')->textarea($v, self::$options);
       $field->set('value' . $language->id, $value);
     }
 
