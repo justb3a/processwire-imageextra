@@ -57,14 +57,6 @@ class ImageExtra extends WireData implements Module {
   );
 
   /**
-   * sanitizer default options
-   * $options that may be provided to the text() and textarea() functions
-   */
-  protected static $options = array(
-    'stripTags' => false // strip markup tags
-  );
-
-  /**
    * @field boolean whether the field has been already formatted
    */
   protected static $alreadyFormatted = false;
@@ -311,7 +303,7 @@ class ImageExtra extends WireData implements Module {
   protected function setExtra($name, $value, Page $language = null, $pagefile) {
     if (!is_null($language) && $language->id) {
       if (!$language->isDefault()) $name .= $language->id;
-      $value = $this->wire('sanitizer')->textarea($value, self::$options);
+      $value = $this->wire('sanitizer')->purify($value);
       $pagefile->set($name, $value);
       return $pagefile;
     }
@@ -331,7 +323,7 @@ class ImageExtra extends WireData implements Module {
         // first item is always default language. this ensures that this will still
         // work even if language support is later uninstalled.
         $item = $n > 0 ? $name . $id : $name;
-        $value = $this->wire('sanitizer')->textarea($v, self::$options);
+        $value = $this->wire('sanitizer')->purify($v);
 
         if ($n > 0) {
           $pagefile->set($item, $value);
@@ -344,7 +336,7 @@ class ImageExtra extends WireData implements Module {
       // no JSON values so assume regular language
       $languages = $this->wire('languages');
       $language = $this->wire('user')->language;
-      $value = $this->wire('sanitizer')->textarea($value, self::$options);
+      $value = $this->wire('sanitizer')->purify($value);
       $pagefile->set($name, $value);
     }
 
@@ -1247,13 +1239,13 @@ class ImageExtra extends WireData implements Module {
 
     if (count($languages) > 1) $field->useLanguages = true;
     $field->setAttribute('name', $fieldName);
-    $value = $this->wire('sanitizer')->textarea($pagefile->{$current}, self::$options);
+    $value = $this->wire('sanitizer')->purify($pagefile->{$current});
     $field->set('value', $value);
 
     foreach ($languages as $language) {
       if (is_null($language) || $language->isDefault()) continue;
       $v = $language ? $pagefile->{$current}($language) : $pagefile->{$current};
-      $value = $this->wire('sanitizer')->textarea($v, self::$options);
+      $value = $this->wire('sanitizer')->purify($v);
       $field->set('value' . $language->id, $value);
     }
 
