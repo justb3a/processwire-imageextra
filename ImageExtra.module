@@ -7,7 +7,7 @@
 * See README.md for usage instructions.
 *
 * @author Tabea David <td@kf-interactive.com>
-* @version 1.0.3
+* @version 1.0.4
 * @copyright Copyright (c) 2017
 * @see https://github.com/justonestep/processwire-imageextra
 * @see http://www.processwire.com
@@ -29,7 +29,7 @@ class ImageExtra extends WireData implements Module {
     return array(
       'title' => 'Image Extra',
       'summary' => 'Adds custom fields to image fields (including multi-language support)',
-      'version' => 103,
+      'version' => 104,
       'href' => 'https://github.com/justonestep/processwire-imageextra',
       'singular' => true,
       'autoload' => true,
@@ -1245,11 +1245,20 @@ class ImageExtra extends WireData implements Module {
     }
 
     $field->label = $this->_(ucfirst($current));
-
-    if (count($languages) > 1) $field->useLanguages = true;
     $field->setAttribute('name', $fieldName);
     $value = $this->wire('sanitizer')->purify($pagefile->{$current});
     $field->set('value', $value);
+
+    // use a `label` element if it isn't a multilingual site
+    if (count($languages) > 1) {
+      $field->useLanguages = true;
+      $tag = 'strong';
+      $tagFor = '';
+    } else {
+      $field->setAttribute('id', $fieldName);
+      $tag = 'label';
+      $tagFor = " for='{$field->name}' class='detail'";
+    }
 
     foreach ($languages as $language) {
       if (is_null($language) || $language->isDefault()) continue;
@@ -1266,7 +1275,7 @@ class ImageExtra extends WireData implements Module {
     $labelPerLanguage = isset($settings->cf_label) && isset($settings->cf_label->{"cf_label__$custom"}) ? $settings->cf_label->{"cf_label__$custom"} : '';
     $label = $labelPerLanguage ? $labelPerLanguage : ($labelDefault ? $labelDefault : $labelFallback);
     $name = strtolower($current);
-    $out = "<div class='InputfieldImageEdit__additional--{$name}'><strong>{$label}</strong>{$field->render()}</div>";
+    $out = "<div class='InputfieldImageEdit__additional--{$name}'><$tag$tagFor>{$label}</$tag>{$field->render()}</div>";
 
     return $out;
   }
