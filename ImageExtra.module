@@ -94,7 +94,7 @@ class ImageExtra extends WireData implements Module {
         $this->addCustomMethods();
 
         if (wire('page')->name === 'field' || !empty($this->additionalFields)) {
-          $this->addHookAfter('InputfieldFile::processInputFile', $this, 'processInputFileExtra');
+          $this->addHookAfter('InputfieldImage::processInputFile', $this, 'processInputFileExtra');
 
           // if it's a recent version use hook after instead of overwriting
           if ($this->isRecentVersion()) {
