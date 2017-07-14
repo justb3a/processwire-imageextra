@@ -38,6 +38,17 @@ $image = $page->image->getRandom();
 echo $image->caption;
 echo $image->location;
 echo $pages->get($image->link)->url;
+echo $image->getExtraLabel('location') . ': ' . $image->location;
+```
+
+### Get extra field label
+
+```php
+// outputs something like: "Location: Munich"
+echo $image->getExtraLabel('location') . ': ' . $image->location;
+
+// outputs something like: "Ort: München"
+echo $image->getExtraLabel('location', 'de') . ': ' . $image->location;
 ```
 
 ## Setting the values

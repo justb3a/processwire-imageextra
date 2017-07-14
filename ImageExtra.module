@@ -7,7 +7,7 @@
 * See README.md for usage instructions.
 *
 * @author Tabea David <td@kf-interactive.com>
-* @version 1.0.4
+* @version 1.0.5
 * @copyright Copyright (c) 2017
 * @see https://github.com/justonestep/processwire-imageextra
 * @see http://www.processwire.com
@@ -29,7 +29,7 @@ class ImageExtra extends WireData implements Module {
     return array(
       'title' => 'Image Extra',
       'summary' => 'Adds custom fields to image fields (including multi-language support)',
-      'version' => 104,
+      'version' => 105,
       'href' => 'https://github.com/justonestep/processwire-imageextra',
       'singular' => true,
       'autoload' => true,
@@ -95,6 +95,7 @@ class ImageExtra extends WireData implements Module {
 
         if (wire('page')->name === 'field' || !empty($this->additionalFields)) {
           $this->addHookAfter('InputfieldImage::processInputFile', $this, 'processInputFileExtra');
+          $this->addHookMethod('Pageimage::getExtraLabel', $this, 'getExtraLabel');
 
           // if it's a recent version use hook after instead of overwriting
           if ($this->isRecentVersion()) {
@@ -109,7 +110,7 @@ class ImageExtra extends WireData implements Module {
           $this->addHookAfter('FieldtypeFile::wakeupValue', $this, 'wakeupExtraValue');
           $this->addHookAfter('FieldtypeFile::formatValue', $this, 'formatExtraValue');
 
-          if (isset($this->additionalFields['link'])) {
+          if (isset($this->additionalFields['link']) && $backend) {
             $this->config->scripts->append($this->config->urls->InputfieldPageListSelect . 'InputfieldPageListSelect.min.js');
           }
         }
@@ -209,7 +210,6 @@ class ImageExtra extends WireData implements Module {
     // we only return strings, so return blank rather than null
     $event->return = (is_null($value)) ? '' : $value;
   }
-
 
   /**
    * Add link method
@@ -1040,6 +1040,58 @@ class ImageExtra extends WireData implements Module {
   }
 
   /**
+   * Add getExtraLabel method
+   *
+   * Examples:
+   *
+   * $image->getExtraLabel('custom');
+   * $image->getExtraLabel('custom', 'fi'); // finish label
+   *
+   * @param HookEvent $event
+   * @return string
+   */
+  public function getExtraLabel(HookEvent $event, $field) {
+    $image = $event->object;
+    $page = $image->page;
+    $extraFieldname = $event->arguments(0);
+    $language = $event->arguments(1);
+    $field = null; // where we'll keep the field we're looking for
+
+    // find all fields of type FieldtypeImage that are part of the page we're using
+    $imageFields = $page->fields->find('type=FieldtypeImage');
+
+    // loop through to find the one we're looking for
+    foreach ($imageFields as $imageField) {
+      // good to get unformatted in case it's a single image field,
+      // because it'll still be an array rather than 1 image
+      $pagefiles = $page->getUnformatted($imageField->name);
+
+      // if the image's pagefiles property matches the one with the
+      // field we're looking at, we have a match. save in $field
+      if ($image->pagefiles === $pagefiles) {
+        $field = $imageField;
+        break;
+      }
+    }
+
+    $fieldSettings = $field->otherFieldSettings;
+    $settings = json_decode($fieldSettings);
+    $label = "cf_label__$extraFieldname";
+
+    // LABEL depends on USER LANGUAGE
+    $userLanguage = $this->user->language;
+    $targetLanguage = $this->user->language;
+
+    // submitted language param – do not use user language
+    if ($language) {
+      $lang = $this->languages->get($language);
+      if ($lang instanceof Language) $targetLanguage = $lang;
+    }
+
+    $event->return = $this->getLabel($extraFieldname, $settings, $targetLanguage);
+  }
+
+  /**
    * Manipulate descriotion field, add label
    *
    * @param HookEvent $event
@@ -1245,6 +1297,16 @@ class ImageExtra extends WireData implements Module {
     }
 
     $field->label = $this->_(ucfirst($current));
+
+    if (count($languages) > 1) {
+      $field->useLanguages = true;
+      $tag = 'strong';
+      $tagFor = '';
+    } else {
+      $tag = 'label';
+      $tagFor = " for='{$field->name}'";
+    }
+
     $field->setAttribute('name', $fieldName);
     $value = $this->wire('sanitizer')->purify($pagefile->{$current});
     $field->set('value', $value);
@@ -1267,17 +1329,30 @@ class ImageExtra extends WireData implements Module {
       $field->set('value' . $language->id, $value);
     }
 
-    // LABEL depends on USER LANGUAGE
     $userLanguage = $this->user->language;
-    $labelFallback = ucfirst($current);
-    $labelDefault = isset($settings->cf_label) && isset($settings->cf_label->{"cf_label__$current"}) ? $settings->cf_label->{"cf_label__$current"} : '';
-    $custom = is_null($userLanguage) || $userLanguage->isDefault() ? $current : $current . '__' . $userLanguage->id;
-    $labelPerLanguage = isset($settings->cf_label) && isset($settings->cf_label->{"cf_label__$custom"}) ? $settings->cf_label->{"cf_label__$custom"} : '';
-    $label = $labelPerLanguage ? $labelPerLanguage : ($labelDefault ? $labelDefault : $labelFallback);
+    $label = $this->getLabel($current, $settings, $userLanguage);
     $name = strtolower($current);
     $out = "<div class='InputfieldImageEdit__additional--{$name}'><$tag$tagFor>{$label}</$tag>{$field->render()}</div>";
 
     return $out;
+  }
+
+  /**
+   * Get Label
+   *
+   * @param string $extraFieldname
+   * @param array $settings
+   * @param Language $targetLanguage
+   * @return string
+   */
+  private function getLabel($extraFieldname, $settings, $targetLanguage) {
+    $labelFallback = ucfirst($extraFieldname);
+    $labelDefault = isset($settings->cf_label) && isset($settings->cf_label->{"cf_label__$extraFieldname"}) ? $settings->cf_label->{"cf_label__$extraFieldname"} : '';
+    $custom = is_null($targetLanguage) || $targetLanguage->isDefault() ? $extraFieldname : $extraFieldname . '__' . $targetLanguage->id;
+    $labelPerLanguage = isset($settings->cf_label) && isset($settings->cf_label->{"cf_label__$custom"}) ? $settings->cf_label->{"cf_label__$custom"} : '';
+    $label = $labelPerLanguage ? $labelPerLanguage : ($labelDefault ? $labelDefault : $labelFallback);
+
+    return $label;
   }
 
   /**
