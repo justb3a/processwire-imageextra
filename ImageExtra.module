@@ -7,7 +7,7 @@
 * See README.md for usage instructions.
 *
 * @author Tabea David <td@kf-interactive.com>
-* @version 1.0.5
+* @version 1.0.6
 * @copyright Copyright (c) 2017
 * @see https://github.com/justonestep/processwire-imageextra
 * @see http://www.processwire.com
@@ -29,7 +29,7 @@ class ImageExtra extends WireData implements Module {
     return array(
       'title' => 'Image Extra',
       'summary' => 'Adds custom fields to image fields (including multi-language support)',
-      'version' => 105,
+      'version' => 106,
       'href' => 'https://github.com/justonestep/processwire-imageextra',
       'singular' => true,
       'autoload' => true,
@@ -338,7 +338,12 @@ class ImageExtra extends WireData implements Module {
       $languages = $this->wire('languages');
       $language = $this->wire('user')->language;
       $value = $this->wire('sanitizer')->purify($value);
-      $pagefile->set($name, $value);
+
+      if ($languages && $language && !$language->isDefault()) {
+         $pagefile->set($name . $language, $value);
+       } else {
+         $pagefile->set($name, $value);
+       }
     }
 
     return $pagefile;
@@ -1062,9 +1067,7 @@ class ImageExtra extends WireData implements Module {
 
     // loop through to find the one we're looking for
     foreach ($imageFields as $imageField) {
-      // good to get unformatted in case it's a single image field,
-      // because it'll still be an array rather than 1 image
-      $pagefiles = $page->getUnformatted($imageField->name);
+      $pagefiles = $page->get($imageField->name);
 
       // if the image's pagefiles property matches the one with the
       // field we're looking at, we have a match. save in $field
