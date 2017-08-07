@@ -110,7 +110,7 @@ class ImageExtra extends WireData implements Module {
           $this->addHookAfter('FieldtypeFile::wakeupValue', $this, 'wakeupExtraValue');
           $this->addHookAfter('FieldtypeFile::formatValue', $this, 'formatExtraValue');
 
-          if (isset($this->additionalFields['link']) && $backend) {
+          if (isset($this->additionalFields['link']) && $backend !== false) {
             $this->config->scripts->append($this->config->urls->InputfieldPageListSelect . 'InputfieldPageListSelect.min.js');
           }
         }
