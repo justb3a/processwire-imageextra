@@ -57,11 +57,6 @@ class ImageExtra extends WireData implements Module {
   );
 
   /**
-   * @field boolean whether the field has been already formatted
-   */
-  protected static $alreadyFormatted = false;
-
-  /**
    * @field boolean whether the language tabs module is installed
    */
   protected static $hasLangTabs = null;
@@ -523,9 +518,9 @@ class ImageExtra extends WireData implements Module {
    * @param HookEvent $event
    */
   public function formatExtraValue(HookEvent $event) {
-    if (!self::$alreadyFormatted) {
-      self::$alreadyFormatted = true;
-      $page = $event->arguments(0);
+    $page = $event->arguments(0);
+
+    if ($page->data['title']) {
       $field = $event->arguments(1);
       $value = $event->arguments(2);
       $settings = $this->getOtherFieldSettings($field);
@@ -541,7 +536,6 @@ class ImageExtra extends WireData implements Module {
           }
         }
       }
-
     }
   }
 
