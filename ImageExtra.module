@@ -520,7 +520,7 @@ class ImageExtra extends WireData implements Module {
   public function formatExtraValue(HookEvent $event) {
     $page = $event->arguments(0);
 
-    if ($page->data['title']) {
+    if (!empty($page->data['title'])) {
       $field = $event->arguments(1);
       $value = $event->arguments(2);
       $settings = $this->getOtherFieldSettings($field);
