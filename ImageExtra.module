@@ -678,7 +678,7 @@ class ImageExtra extends WireData implements Module {
       if ($isAjax && !$overwrite) $item->isTemp(true);
 
       $event->object->fileAdded($item);
-    } catch(Exception $e) {
+    } catch(\Exception $e) {
       $item->unlink();
       $value->remove($item);
       throw new WireException($e->getMessage());
@@ -1203,7 +1203,7 @@ class ImageExtra extends WireData implements Module {
           $query->execute();
           $numRows = (int) $query->rowCount();
           $query->closeCursor();
-        } catch(Exception $e) {
+        } catch(\Exception $e) {
           $this->errors($e->getMessage(), Notice::log);
         }
 
@@ -1215,7 +1215,7 @@ class ImageExtra extends WireData implements Module {
           try {
             $db->exec($addColumn);
             $this->message("Added column '{$col}' for '{$table}'", Notice::log);
-          } catch(Exception $e) {
+          } catch(\Exception $e) {
             $this->errors($e->getMessage(), Notice::log);
           }
         }
@@ -1229,7 +1229,7 @@ class ImageExtra extends WireData implements Module {
           $query->bindValue(":modified", $date);
           $query->execute();
           $this->message("Updated created/modified for '{$table}'", Notice::log);
-        } catch(Exception $e) {
+        } catch(\Exception $e) {
           $this->errors($e->getMessage(), Notice::log);
         }
       }
