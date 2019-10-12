@@ -252,7 +252,7 @@ class ImageExtra extends WireData implements Module {
       if ($user->language && $user->language->id) {
         $value = $event->object->get($current . $user->language);
       } else {
-        if (empty($value) && array_key_exists($current, $event->object->data)) {
+        if (empty($value) && isset($current[$event->object->data])) {
           // inherit default language value
           $value = $event->object->get($current);
         }
@@ -465,9 +465,9 @@ class ImageExtra extends WireData implements Module {
     if (!empty($tmp)) {
       $sleepValue = array();
       foreach ($event->return as $key => $e) {
-        $other = (array_key_exists($key, $tmp['other'])) ? $tmp['other'][$key] : array();
-        $orientation = (array_key_exists($key, $tmp['orientation'])) ? $tmp['orientation'][$key] : array();
-        $link = (array_key_exists($key, $tmp['link'])) ? $tmp['link'][$key] : array();
+        $other = (isset($key[$tmp['other']])) ? $tmp['other'][$key] : array();
+        $orientation = (isset($key[$tmp['orientation']])) ? $tmp['orientation'][$key] : array();
+        $link = (isset($key[$tmp['link']])) ? $tmp['link'][$key] : array();
 
         $sleepValue[] = $e + $other + $orientation + $link;
       }
@@ -487,7 +487,7 @@ class ImageExtra extends WireData implements Module {
 
     if (!$field->type instanceof FieldtypeImage) return;
 
-    if (!is_array($value) || array_key_exists('data', $value)) $value = array($value);
+    if (!is_array($value) || isset($value['data'])) $value = array($value);
 
     $pagefiles = array();
     foreach ($event->return as $pagefile) {
@@ -520,7 +520,9 @@ class ImageExtra extends WireData implements Module {
   public function formatExtraValue(HookEvent $event) {
     $page = $event->arguments(0);
 
-    if (!empty($page->data['title'])) {
+    // causes an error. fixed/workaround by markus tiefenbacher 19.03.2018
+    //if ($page->data['title']) {
+    if (isset($page->data['title']) || isset($page->title)) {
       $field = $event->arguments(1);
       $value = $event->arguments(2);
       $settings = $this->getOtherFieldSettings($field);
@@ -528,7 +530,7 @@ class ImageExtra extends WireData implements Module {
       if ($settings && $formatters = $settings->cf_textformatter) {
         foreach ($value as $v) {
           foreach ($this->additionalFields['other'][$field->name] as $otherField) {
-            if (!array_key_exists($otherField, $formatters)) continue;
+            if (!property_exists($formatters, $otherField)) continue;
             $formatter = $formatters->$otherField;
             $currentValue = $v->$otherField;
             if ($formatter) $this->modules->get($formatter)->formatValue($page, $field, $currentValue);
@@ -678,7 +680,7 @@ class ImageExtra extends WireData implements Module {
       if ($isAjax && !$overwrite) $item->isTemp(true);
 
       $event->object->fileAdded($item);
-    } catch(\Exception $e) {
+    } catch(Exception $e) {
       $item->unlink();
       $value->remove($item);
       throw new WireException($e->getMessage());
@@ -857,7 +859,7 @@ class ImageExtra extends WireData implements Module {
     }
 
     // inputfield for label text (multi-lingual)
-    $languages = $this->getLanguages(array_key_exists('noLang', $data) ? $data['noLang'] : 0);
+    $languages = $this->getLanguages(isset($data['noLang']) ? $data['noLang'] : 0);
     $fLabel = $this->modules->get('InputfieldText');
     $fLabel->label = $this->_('Custom Label');
 
@@ -1134,7 +1136,7 @@ class ImageExtra extends WireData implements Module {
     $data = $this->mergeData($name);
 
     if (!empty($this->additionalFields['other'])) {
-      if (array_key_exists($name, $this->additionalFields['other'])) {
+      if (isset($name[$this->additionalFields['other']])) {
         foreach ($this->additionalFields['other'][$name] as $field) {
           $out .= $this->renderInputItemField($pagefile, $id, $n, $field, $noLang, $settings);
         }
@@ -1203,7 +1205,7 @@ class ImageExtra extends WireData implements Module {
           $query->execute();
           $numRows = (int) $query->rowCount();
           $query->closeCursor();
-        } catch(\Exception $e) {
+        } catch(Exception $e) {
           $this->errors($e->getMessage(), Notice::log);
         }
 
@@ -1215,7 +1217,7 @@ class ImageExtra extends WireData implements Module {
           try {
             $db->exec($addColumn);
             $this->message("Added column '{$col}' for '{$table}'", Notice::log);
-          } catch(\Exception $e) {
+          } catch(Exception $e) {
             $this->errors($e->getMessage(), Notice::log);
           }
         }
@@ -1229,7 +1231,7 @@ class ImageExtra extends WireData implements Module {
           $query->bindValue(":modified", $date);
           $query->execute();
           $this->message("Updated created/modified for '{$table}'", Notice::log);
-        } catch(\Exception $e) {
+        } catch(Exception $e) {
           $this->errors($e->getMessage(), Notice::log);
         }
       }
